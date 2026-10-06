@@ -21,7 +21,6 @@ function connect() {
 function localStats() { D = {...viewStats(local), services:null}; onStats(); }
 function startLocal() { local = createWorld(); online = true; F = viewFrame(local); localStats(); setInterval(localStats, 500); }
 const send = cmd => { if (local) { applyCommand(local, cmd); F = viewFrame(local); localStats(); } else if (ws && ws.readyState === 1) ws.send(JSON.stringify(cmd)); };
-if (document.querySelector('meta[name=twin-mode][content=local]') || new URLSearchParams(location.search).has('local')) startLocal(); else connect();
 
 /* ============================================================ small render helpers */
 const COL = {ink:'#16232D', ink2:'#4C5C68', muted:'#83919C', line:'#D6DCE1', blue:'#1D5F9A', RUN:'#2B9A5A', IDLE:'#9BA8B3', BLOCKED:'#E08E12', DOWN:'#D2452F', OFF:'#CCD3D9'};
@@ -403,5 +402,7 @@ function frame(now) {
 }
 requestAnimationFrame(frame);
 setStatus();
+// start last: everything above must be initialised before the first data arrives
+if (document.querySelector('meta[name=twin-mode][content=local]') || new URLSearchParams(location.search).has('local')) startLocal(); else connect();
 window.__twin = { openDash, openEntity, get stats() { return D; }, get frame() { return F; } };
 void ringPos; void PALLET_POS;
