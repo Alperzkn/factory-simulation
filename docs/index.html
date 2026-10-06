@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kestrel digital twin docs</title>
+<link rel="stylesheet" href="/vendor/fontsource/barlow/400.css">
+<link rel="stylesheet" href="/vendor/fontsource/barlow/500.css">
+<link rel="stylesheet" href="/vendor/fontsource/barlow/600.css">
+<link rel="stylesheet" href="/vendor/fontsource/barlow-condensed/600.css">
+<style>
+:root {
+  --bg: #E6EAED;
+  --panel: #F3F5F6;
+  --card: #FFFFFF;
+  --ink: #16232D;
+  --ink-2: #4C5C68;
+  --muted: #83919C;
+  --line: #D6DCE1;
+  --accent: #1D5F9A;
+  --accent-soft: #DCE8F3;
+  --green: #2B9A5A;
+  --amber: #E08E12;
+  --red: #D2452F;
+  --green-soft: #DFF0E6;
+  --amber-soft: #FBEBD0;
+  --red-soft: #F8E0DB;
+  --body: "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --head: "Barlow Condensed", "Barlow", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --header-h: 56px;
+  --side-w: 288px;
+  --toc-w: 232px;
+}
+* { box-sizing: border-box; }
+html { scroll-padding-top: calc(var(--header-h) + 20px); -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 400 16px/1.6 var(--body); }
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { text-decoration-thickness: 2px; }
+:focus { outline: none; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 3px; }
+button { font: inherit; color: inherit; }
+
+.skip { position: absolute; left: 12px; top: -48px; z-index: 50; background: var(--card); padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; }
+.skip:focus { top: 8px; }
+
+/* header */
+.top { position: fixed; inset: 0 0 auto 0; height: var(--header-h); z-index: 30; display: flex; align-items: center; gap: 12px; padding: 0 20px; background: var(--card); border-bottom: 1px solid var(--line); }
+.brand { display: flex; align-items: center; gap: 10px; min-width: 0; font: 600 21px/1 var(--head); color: var(--ink); text-decoration: none; letter-spacing: .005em; white-space: nowrap; }
+.brand span { overflow: hidden; text-overflow: ellipsis; padding: 3px 0; }
+.brand-mark { width: 22px; height: 22px; flex: none; }
+.top-spacer { flex: 1; min-width: 0; }
+.top-link { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); font-weight: 500; font-size: 14.5px; text-decoration: none; white-space: nowrap; }
+.top-link:hover { border-color: var(--accent); color: var(--accent); }
+.menu-btn { display: none; align-items: center; gap: 8px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); cursor: pointer; font-weight: 500; font-size: 14.5px; }
+.menu-btn svg { width: 16px; height: 16px; }
+
+/* layout */
+.shell { display: grid; grid-template-columns: var(--side-w) minmax(0, 1fr) var(--toc-w); padding-top: var(--header-h); min-height: 100vh; }
+.side { position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); overflow-y: auto; background: var(--panel); border-right: 1px solid var(--line); padding: 16px 12px 32px; }
+.filter { position: relative; margin: 0 4px 14px; }
+.filter input { width: 100%; padding: 8px 34px 8px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink); font: 400 15px/1.3 var(--body); }
+.filter input::placeholder { color: var(--muted); }
+.filter input:focus-visible { outline-offset: 0; border-color: var(--accent); }
+.filter kbd { position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font: 500 12px/1 var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; background: var(--panel); pointer-events: none; }
+.nav-group { margin: 0 0 14px; }
+.nav-group h2 { margin: 0; padding: 6px 10px 4px; font: 600 13.5px/1.3 var(--body); color: var(--muted); }
+.nav-group ul { list-style: none; margin: 0; padding: 0; }
+.nav-link { display: block; padding: 6px 10px; border-radius: 6px; color: var(--ink-2); text-decoration: none; font-size: 15.5px; line-height: 1.35; }
+.nav-link:hover { background: #E9EDF0; color: var(--ink); }
+.nav-link[aria-current="page"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.nav-sub { list-style: none; margin: 1px 0 4px 10px; padding: 0 0 0 10px; border-left: 1px solid var(--line); }
+.nav-sub a { display: block; padding: 3px 8px; border-radius: 5px; color: var(--ink-2); text-decoration: none; font-size: 14.5px; line-height: 1.35; }
+.nav-sub a:hover { background: #E9EDF0; color: var(--ink); }
+.nav-sub mark, .nav-link mark { background: var(--amber-soft); color: inherit; border-radius: 2px; padding: 0 1px; }
+.nav-empty { padding: 8px 10px; color: var(--muted); font-size: 15px; }
+
+main { min-width: 0; padding: 28px 32px 64px; }
+.article-wrap { max-width: calc(76ch + 96px); margin: 0 auto; }
+article { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 36px 48px 40px; min-height: 50vh; }
+.crumb { margin: 0 0 6px; color: var(--muted); font-size: 14.5px; font-weight: 500; }
+
+/* typography */
+article h1, article h2, article h3, article h4 { font-family: var(--head); font-weight: 600; color: var(--ink); line-height: 1.15; }
+article h1 { font-size: 40px; margin: 0 0 18px; letter-spacing: -.005em; }
+article h2 { font-size: 28px; margin: 44px 0 12px; padding-top: 22px; border-top: 1px solid var(--line); }
+article h3 { font-size: 21.5px; margin: 30px 0 8px; }
+article h4 { font-size: 18px; margin: 22px 0 6px; }
+article p, article ul, article ol, article pre, article table, article blockquote { margin: 0 0 16px; }
+article p, article li { max-width: 76ch; }
+article ul, article ol { padding-left: 24px; }
+article li { margin: 4px 0; }
+article li > ul, article li > ol { margin: 4px 0 4px; }
+article strong { font-weight: 600; }
+article hr { border: 0; border-top: 1px solid var(--line); margin: 32px 0; }
+article :is(h2, h3, h4) { position: relative; }
+.anchor { margin-left: 8px; color: var(--muted); text-decoration: none; font-family: var(--body); font-weight: 400; font-size: .72em; opacity: 0; }
+:is(h2, h3, h4):hover .anchor, .anchor:focus-visible { opacity: 1; }
+.anchor:hover { color: var(--accent); }
+
+code, kbd, pre { font-family: var(--mono); }
+article :not(pre) > code { font-size: .86em; background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; overflow-wrap: anywhere; }
+article :is(h2, h3, h4) > code { font-size: .78em; font-weight: 500; }
+.codeblock { position: relative; margin: 0 0 18px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); }
+.codeblock pre { margin: 0; padding: 14px 16px; overflow-x: auto; font-size: 13.5px; line-height: 1.55; color: var(--ink); tab-size: 2; }
+.codeblock pre code { font-size: inherit; }
+.codeblock .lang { position: absolute; top: 7px; right: 70px; font: 500 12.5px/1.6 var(--body); color: var(--muted); pointer-events: none; }
+.copy { position: absolute; top: 6px; right: 6px; padding: 3px 9px; border: 1px solid var(--line); border-radius: 5px; background: var(--card); color: var(--ink-2); font: 500 12.5px/1.5 var(--body); cursor: pointer; }
+.copy:hover { border-color: var(--accent); color: var(--accent); }
+.copy.done { border-color: var(--green); color: var(--green); }
+.codeblock.has-tools pre { padding-top: 34px; }
+
+.table-wrap { overflow-x: auto; margin: 0 0 18px; }
+article table { border-collapse: collapse; width: 100%; margin: 0; font-size: 15px; line-height: 1.45; }
+article th { text-align: left; font-weight: 600; color: var(--ink-2); padding: 8px 12px 8px 0; border-bottom: 1px solid var(--muted); white-space: nowrap; vertical-align: bottom; }
+article td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+article tr:last-child td { border-bottom: 0; }
+article td:last-child, article th:last-child { padding-right: 0; }
+article td code { white-space: nowrap; overflow-wrap: normal; }
+article td[align="right"], article th[align="right"] { text-align: right; font-variant-numeric: tabular-nums; }
+
+.callout { border: 1px solid var(--line); border-left: 4px solid var(--accent); background: var(--accent-soft); border-radius: 6px; padding: 12px 16px; margin: 0 0 18px; }
+.callout p { margin: 0 0 8px; }
+.callout p:last-child { margin-bottom: 0; }
+.callout .callout-title { font-weight: 600; color: var(--accent); display: block; margin-bottom: 2px; }
+.callout.warning { border-left-color: var(--amber); background: var(--amber-soft); }
+.callout.warning .callout-title { color: #8A5406; }
+.callout :not(pre) > code { background: rgba(255, 255, 255, .6); }
+article blockquote:not(.callout) { border-left: 3px solid var(--line); padding: 2px 0 2px 16px; color: var(--ink-2); }
+
+.method { display: inline-block; min-width: 46px; margin-right: 8px; padding: 2px 7px; border-radius: 4px; font: 600 12.5px/1.5 var(--mono); text-align: center; vertical-align: .12em; letter-spacing: .02em; }
+.method.get { background: var(--green-soft); color: #1D7343; }
+.method.post { background: var(--accent-soft); color: var(--accent); }
+.method.put { background: var(--amber-soft); color: #8A5406; }
+td .method { min-width: 0; }
+
+.pager { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 18px; }
+.pager a { display: block; padding: 12px 16px; background: var(--card); border: 1px solid var(--line); border-radius: 8px; text-decoration: none; color: var(--ink); }
+.pager a:hover { border-color: var(--accent); }
+.pager a span { display: block; color: var(--muted); font-size: 14px; }
+.pager a strong { font: 600 19px/1.25 var(--head); }
+.pager .next { text-align: right; grid-column: 2; }
+.notice { color: var(--ink-2); }
+
+/* on this page */
+.toc { position: sticky; top: var(--header-h); height: calc(100vh - var(--header-h)); overflow-y: auto; padding: 34px 20px 32px 4px; }
+.toc h2 { margin: 0 0 8px; font: 600 13.5px/1.3 var(--body); color: var(--muted); }
+.toc ul { list-style: none; margin: 0; padding: 0; border-left: 1px solid var(--line); }
+.toc a { display: block; margin-left: -1px; padding: 4px 0 4px 12px; border-left: 2px solid transparent; color: var(--ink-2); text-decoration: none; font-size: 14.5px; line-height: 1.35; }
+.toc a.lvl3 { padding-left: 24px; font-size: 14px; }
+.toc a:hover { color: var(--ink); }
+.toc a.active { border-left-color: var(--accent); color: var(--accent); font-weight: 500; }
+.toc[hidden] { display: block; visibility: hidden; }
+
+.scrim { display: none; }
+
+@media (max-width: 1240px) {
+  .shell { grid-template-columns: var(--side-w) minmax(0, 1fr); }
+  .toc { display: none; }
+}
+@media (max-width: 900px) {
+  .menu-btn { display: inline-flex; }
+  .top { padding: 0 12px; gap: 10px; }
+  .brand { font-size: 19px; }
+  .shell { display: block; }
+  .side { position: fixed; top: var(--header-h); left: 0; bottom: 0; z-index: 25; width: min(var(--side-w), 86vw); height: auto; transform: translateX(-102%); visibility: hidden; transition: transform .18s ease, visibility 0s linear .18s; box-shadow: 0 8px 28px rgba(22, 35, 45, .18); }
+  body.menu-open .side { transform: none; visibility: visible; transition: transform .18s ease; }
+  body.menu-open .scrim { display: block; position: fixed; inset: var(--header-h) 0 0 0; z-index: 20; background: rgba(22, 35, 45, .32); }
+  main { padding: 16px 12px 48px; }
+  article { padding: 22px 18px 26px; }
+  article h1 { font-size: 32px; }
+  article h2 { font-size: 24px; }
+  .filter kbd { display: none; }
+}
+@media (max-width: 520px) {
+  .top-link .long { display: none; }
+  .top-link { padding: 7px 10px; flex: none; }
+  .menu-btn { flex: none; padding: 9px 10px; }
+  .menu-btn span { display: none; }
+  .brand { font-size: 18px; gap: 8px; }
+  .brand-mark { width: 20px; height: 20px; }
+  .pager { grid-template-columns: 1fr; }
+  .pager .next { grid-column: 1; text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .side { transition: none !important; }
+  html { scroll-behavior: auto; }
+}
+@media print {
+  .top, .side, .toc, .pager, .copy, .scrim { display: none !important; }
+  .shell { display: block; padding: 0; }
+  article { border: 0; padding: 0; }
+  body { background: #fff; }
+}
+</style>
+</head>
+<body>
+<a class="skip" href="#content">Skip to content</a>
+
+<header class="top">
+  <button class="menu-btn" id="menuBtn" type="button" aria-label="Menu" aria-expanded="false" aria-controls="sidebar">
+    <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 4h12M2 8h12M2 12h12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    <span>Menu</span>
+  </button>
+  <a class="brand" href="#/introduction">
+    <svg class="brand-mark" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" fill="none" stroke="#1D5F9A" stroke-width="2"/><circle cx="12" cy="12" r="5.2" fill="none" stroke="#1D5F9A" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="#1D5F9A"/></svg>
+    <span>Kestrel digital twin docs</span>
+  </a>
+  <span class="top-spacer"></span>
+  <a class="top-link" href="/"><span class="long">Open the</span> 3D viewer</a>
+</header>
+
+<div class="shell">
+  <nav class="side" id="sidebar" aria-label="Documentation pages">
+    <div class="filter">
+      <input id="filter" type="search" placeholder="Filter pages and headings" aria-label="Filter pages and headings" autocomplete="off" spellcheck="false">
+      <kbd aria-hidden="true">/</kbd>
+    </div>
+    <div id="nav"></div>
+  </nav>
+  <div class="scrim" id="scrim"></div>
+
+  <main id="content" tabindex="-1">
+    <div class="article-wrap">
+      <article id="article" aria-live="polite"><p class="notice">Loading…</p></article>
+      <nav class="pager" id="pager" aria-label="Previous and next page"></nav>
+    </div>
+  </main>
+
+  <aside class="toc" id="toc" aria-label="On this page" hidden>
+    <h2>On this page</h2>
+    <ul id="tocList"></ul>
+  </aside>
+</div>
+
+<script type="module">
+import { marked } from '/vendor/marked/lib/marked.esm.js';
+
+const $ = id => document.getElementById(id);
+const el = (tag, attrs = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) { if (k === 'class') n.className = v; else if (k === 'text') n.textContent = v; else n.setAttribute(k, v); }
+  n.append(...kids);
+  return n;
+};
+const slugify = s => s.toLowerCase().replace(/<[^>]+>/g, '').replace(/&[a-z]+;/g, ' ').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'section';
+const plain = s => s.replace(/`([^`]*)`/g, '$1').replace(/\*\*([^*]*)\*\*/g, '$1').replace(/\[([^\]]*)\]\([^)]*\)/g, '$1').trim();
+
+const state = { nav: [], pages: [], bySlug: new Map(), cache: new Map(), index: new Map(), current: null, observer: null };
+
+/* ---------- content loading ---------- */
+async function loadPage(slug) {
+  if (state.cache.has(slug)) return state.cache.get(slug);
+  const p = fetch(`content/${slug}.md`, { cache: 'no-cache' }).then(async r => {
+    const type = r.headers.get('content-type') || '';
+    if (!r.ok || type.includes('text/html')) return null;
+    return r.text();
+  }).catch(() => null);
+  state.cache.set(slug, p);
+  return p;
+}
+// headings of a markdown source, with the same ids the renderer assigns
+function headingsOf(md) {
+  const out = [], seen = new Map(); let fence = null;
+  for (const line of md.split('\n')) {
+    const f = line.match(/^\s*(```+|~~~+)/);
+    if (f) { fence = fence ? null : f[1]; continue; }
+    if (fence) continue;
+    const m = line.match(/^(#{2,3})\s+(.+?)\s*#*$/);
+    if (!m) continue;
+    const text = plain(m[2]); let id = slugify(text);
+    const n = seen.get(id) || 0; seen.set(id, n + 1); if (n) id += `-${n + 1}`;
+    out.push({ level: m[1].length, text, id });
+  }
+  return out;
+}
+async function buildIndex() {
+  await Promise.all(state.pages.map(async p => { const md = await loadPage(p.slug); state.index.set(p.slug, md ? headingsOf(md) : []); }));
+  if ($('filter').value.trim()) renderNav();
+}
+
+/* ---------- sidebar ---------- */
+const mark = (text, q) => {
+  const i = q ? text.toLowerCase().indexOf(q) : -1;
+  if (i < 0) return [text];
+  return [text.slice(0, i), el('mark', { text: text.slice(i, i + q.length) }), text.slice(i + q.length)];
+};
+function renderNav() {
+  const q = $('filter').value.trim().toLowerCase(), host = $('nav');
+  host.textContent = '';
+  let shown = 0;
+  for (const group of state.nav) {
+    const ul = el('ul');
+    for (const page of group.pages) {
+      const heads = q ? (state.index.get(page.slug) || []).filter(h => h.text.toLowerCase().includes(q)) : [];
+      if (q && !page.title.toLowerCase().includes(q) && !heads.length) continue;
+      const a = el('a', { class: 'nav-link', href: `#/${page.slug}` }, ...mark(page.title, q));
+      if (state.current === page.slug) a.setAttribute('aria-current', 'page');
+      const li = el('li', {}, a);
+      if (heads.length) li.append(el('ul', { class: 'nav-sub' }, ...heads.slice(0, 8).map(h => el('li', {}, el('a', { href: `#/${page.slug}/${h.id}` }, ...mark(h.text, q))))));
+      ul.append(li); shown++;
+    }
+    if (ul.children.length) host.append(el('div', { class: 'nav-group' }, el('h2', { text: group.title }), ul));
+  }
+  if (!shown) host.append(el('p', { class: 'nav-empty', text: 'No page or heading matches.' }));
+}
+
+/* ---------- article ---------- */
+function decorate(article) {
+  // heading ids and anchor links
+  const seen = new Map();
+  for (const h of article.querySelectorAll('h2, h3, h4')) {
+    let id = slugify(h.textContent); const n = seen.get(id) || 0; seen.set(id, n + 1); if (n) id += `-${n + 1}`;
+    h.id = id;
+    h.append(el('a', { class: 'anchor', href: `#/${state.current}/${id}`, 'aria-label': `Link to section: ${h.textContent}`, text: '#' }));
+  }
+  // HTTP method badges on headings and table cells that start with a method and a path
+  for (const node of article.querySelectorAll('h2 > code:first-child, h3 > code:first-child, h4 > code:first-child, td > code:first-child')) {
+    const m = node.textContent.match(/^(GET|POST|PUT)\s+(\/\S*)$/);
+    if (!m) continue;
+    node.before(el('span', { class: `method ${m[1].toLowerCase()}`, text: m[1] }));
+    node.textContent = m[2];
+  }
+  // callouts
+  for (const bq of article.querySelectorAll('blockquote')) {
+    const strong = bq.querySelector(':scope > p:first-child > strong:first-child');
+    const kind = strong && /^(note|warning)$/i.exec(strong.textContent.trim());
+    if (!kind) continue;
+    const box = el('div', { class: `callout ${kind[1].toLowerCase()}`, role: 'note' });
+    const title = el('span', { class: 'callout-title', text: kind[1][0].toUpperCase() + kind[1].slice(1).toLowerCase() });
+    const p = strong.parentNode; strong.remove();
+    if (p.firstChild && p.firstChild.nodeType === 3) p.firstChild.textContent = p.firstChild.textContent.replace(/^[\s:.]+/, '');
+    while (p.firstChild && p.firstChild.nodeName === 'BR') p.firstChild.remove();
+    box.append(title, ...bq.childNodes);
+    bq.replaceWith(box);
+  }
+  // tables scroll inside their own box
+  for (const t of article.querySelectorAll('table')) { const w = el('div', { class: 'table-wrap', tabindex: '0', role: 'region', 'aria-label': 'Table' }); t.before(w); w.append(t); }
+  // code blocks with copy buttons
+  for (const pre of article.querySelectorAll('pre')) {
+    const code = pre.querySelector('code'), lang = code && (code.className.match(/language-(\S+)/) || [])[1];
+    const box = el('div', { class: 'codeblock has-tools' }); pre.before(box);
+    const btn = el('button', { class: 'copy', type: 'button', text: 'Copy' });
+    btn.addEventListener('click', async () => {
+      const text = pre.textContent.replace(/\n$/, '');
+      try { await navigator.clipboard.writeText(text); }
+      catch { const ta = el('textarea'); ta.value = text; document.body.append(ta); ta.select(); document.execCommand('copy'); ta.remove(); }
+      btn.textContent = 'Copied'; btn.classList.add('done');
+      setTimeout(() => { btn.textContent = 'Copy'; btn.classList.remove('done'); }, 1400);
+    });
+    if (lang && lang !== 'text') box.append(el('span', { class: 'lang', text: lang }));
+    pre.setAttribute('tabindex', '0');
+    box.append(btn, pre);
+  }
+  // external links open in a new tab
+  for (const a of article.querySelectorAll('a[href^="http"]')) { a.target = '_blank'; a.rel = 'noopener'; }
+}
+
+function renderToc(article) {
+  const list = $('tocList'), heads = [...article.querySelectorAll('h2, h3')];
+  list.textContent = '';
+  $('toc').hidden = heads.length < 2;
+  const links = new Map();
+  for (const h of heads) {
+    const text = [...h.childNodes].filter(n => !(n.classList && n.classList.contains('anchor'))).map(n => n.textContent + (n.classList && n.classList.contains('method') ? ' ' : '')).join('').trim();
+    const a = el('a', { href: `#/${state.current}/${h.id}`, class: h.tagName === 'H3' ? 'lvl3' : 'lvl2', text });
+    links.set(h, a); list.append(el('li', {}, a));
+  }
+  if (state.observer) state.observer.disconnect();
+  if (!heads.length) return;
+  const update = () => {
+    const y = 96; let active = heads[0];
+    for (const h of heads) { if (h.getBoundingClientRect().top <= y) active = h; else break; }
+    if (window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 4) active = heads[heads.length - 1];
+    for (const [h, a] of links) { const on = h === active; a.classList.toggle('active', on); if (on) a.setAttribute('aria-current', 'location'); else a.removeAttribute('aria-current'); }
+  };
+  let raf = 0; const onScroll = () => { if (!raf) raf = requestAnimationFrame(() => { raf = 0; update(); }); };
+  window.addEventListener('scroll', onScroll, { passive: true });
+  state.observer = { disconnect: () => window.removeEventListener('scroll', onScroll) };
+  update();
+}
+
+function renderPager(slug) {
+  const i = state.pages.findIndex(p => p.slug === slug), host = $('pager');
+  host.textContent = '';
+  const prev = state.pages[i - 1], next = state.pages[i + 1];
+  if (prev) host.append(el('a', { class: 'prev', href: `#/${prev.slug}`, rel: 'prev' }, el('span', { text: 'Previous' }), el('strong', { text: prev.title })));
+  if (next) host.append(el('a', { class: 'next', href: `#/${next.slug}`, rel: 'next' }, el('span', { text: 'Next' }), el('strong', { text: next.title })));
+}
+
+/* ---------- routing ---------- */
+function parseHash() {
+  const m = location.hash.match(/^#\/([^/?#]+)(?:\/([^?#]+))?/);
+  return m ? { slug: decodeURIComponent(m[1]), anchor: m[2] ? decodeURIComponent(m[2]) : null } : { slug: null, anchor: null };
+}
+function scrollToAnchor(anchor, focus) {
+  const target = anchor && document.getElementById(anchor);
+  if (target) { target.scrollIntoView(); if (focus) { target.setAttribute('tabindex', '-1'); target.focus({ preventScroll: true }); } return true; }
+  return false;
+}
+async function route(first) {
+  let { slug, anchor } = parseHash();
+  if (!slug) { history.replaceState(null, '', `#/${state.pages[0].slug}`); slug = state.pages[0].slug; }
+  const article = $('article'), page = state.bySlug.get(slug);
+  closeMenu();
+  if (slug === state.current) { if (!scrollToAnchor(anchor, true)) window.scrollTo(0, 0); return; }
+  state.current = slug;
+  renderNav();
+  const md = page ? await loadPage(slug) : null;
+  if (state.current !== slug) return;                       // a newer navigation won
+  article.textContent = '';
+  if (page) article.append(el('p', { class: 'crumb', text: page.group }));
+  if (!page) {
+    article.append(el('h1', { text: 'Page not found' }), el('p', { class: 'notice' }, `There is no documentation page called "${slug}". `, el('a', { href: `#/${state.pages[0].slug}`, text: 'Go to the introduction' }), '.'));
+    document.title = 'Page not found · Kestrel digital twin docs';
+  } else if (md == null) {
+    article.append(el('h1', { text: page.title }), el('p', { class: 'notice', text: 'This page has not been written yet.' }));
+    document.title = `${page.title} · Kestrel digital twin docs`;
+  } else {
+    const body = el('div'); body.innerHTML = marked.parse(md, { gfm: true });
+    article.append(...body.childNodes);
+    decorate(article);
+    document.title = `${page.title} · Kestrel digital twin docs`;
+  }
+  renderToc(article);
+  renderPager(page ? slug : null);
+  if (!scrollToAnchor(anchor, !first)) { window.scrollTo(0, 0); if (!first) $('content').focus({ preventScroll: true }); }
+}
+
+/* ---------- menu, filter, keys ---------- */
+const menuBtn = $('menuBtn');
+function closeMenu() { document.body.classList.remove('menu-open'); menuBtn.setAttribute('aria-expanded', 'false'); }
+function openMenu() { document.body.classList.add('menu-open'); menuBtn.setAttribute('aria-expanded', 'true'); }
+menuBtn.addEventListener('click', () => { if (document.body.classList.contains('menu-open')) closeMenu(); else { openMenu(); $('filter').focus(); } });
+$('scrim').addEventListener('click', closeMenu);
+$('filter').addEventListener('input', renderNav);
+$('filter').addEventListener('keydown', e => {
+  if (e.key === 'Enter') {
+    // best match: a page whose title matches, otherwise the first matching heading
+    const nav = $('nav'), hit = nav.querySelector('.nav-link mark');
+    const a = hit ? hit.closest('a') : nav.querySelector('.nav-sub a') || nav.querySelector('.nav-link');
+    if (a) location.hash = a.getAttribute('href');
+  }
+  if (e.key === 'ArrowDown') { const a = $('nav').querySelector('a'); if (a) { a.focus(); e.preventDefault(); } }
+});
+$('nav').addEventListener('keydown', e => {
+  if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+  const links = [...$('nav').querySelectorAll('a')], i = links.indexOf(document.activeElement);
+  if (i < 0) return;
+  e.preventDefault();
+  if (e.key === 'ArrowUp' && i === 0) $('filter').focus(); else (links[i + (e.key === 'ArrowDown' ? 1 : -1)] || links[i]).focus();
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    if (document.body.classList.contains('menu-open')) { closeMenu(); menuBtn.focus(); }
+    else if (document.activeElement === $('filter') && $('filter').value) { $('filter').value = ''; renderNav(); }
+    return;
+  }
+  const t = e.target, typing = t instanceof HTMLElement && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+  if (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey && !e.altKey) { e.preventDefault(); if (matchMedia('(max-width: 900px)').matches) openMenu(); $('filter').focus(); $('filter').select(); }
+});
+
+/* ---------- start ---------- */
+try {
+  const res = await fetch('content/_nav.json', { cache: 'no-cache' });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const nav = await res.json();
+  state.nav = nav.groups;
+  for (const g of nav.groups) for (const p of g.pages) { const page = { ...p, group: g.title }; state.pages.push(page); state.bySlug.set(p.slug, page); }
+  window.addEventListener('hashchange', () => route(false));
+  await route(true);
+  buildIndex();
+} catch (e) {
+  $('article').textContent = '';
+  $('article').append(el('h1', { text: 'Documentation could not be loaded' }), el('p', { class: 'notice', text: `The navigation file content/_nav.json could not be read (${e.message}). Open this page through the twin server at /docs/ rather than from the file system.` }));
+}
+</script>
+</body>
+</html>

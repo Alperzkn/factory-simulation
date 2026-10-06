@@ -1,0 +1,37 @@
+{
+  "groups": [
+    {
+      "title": "Guide",
+      "pages": [
+        { "slug": "introduction", "title": "Introduction" },
+        { "slug": "getting-started", "title": "Getting started" },
+        { "slug": "user-guide", "title": "Using the 3D viewer" },
+        { "slug": "configuration", "title": "Configuration" }
+      ]
+    },
+    {
+      "title": "Concepts",
+      "pages": [
+        { "slug": "simulation-model", "title": "Simulation model" },
+        { "slug": "kpis", "title": "KPIs and formulas" },
+        { "slug": "data-model", "title": "Data model" }
+      ]
+    },
+    {
+      "title": "Interfaces",
+      "pages": [
+        { "slug": "rest-api", "title": "REST API" },
+        { "slug": "streaming", "title": "Streaming: SSE and WebSocket" },
+        { "slug": "mqtt", "title": "MQTT" },
+        { "slug": "opc-ua", "title": "OPC UA" }
+      ]
+    },
+    {
+      "title": "Cookbook",
+      "pages": [
+        { "slug": "recipes", "title": "Recipes" },
+        { "slug": "troubleshooting", "title": "Troubleshooting" }
+      ]
+    }
+  ]
+}

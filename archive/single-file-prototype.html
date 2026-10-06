@@ -1,0 +1,1086 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Kestrel Brake Works: disc line simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600&family=Barlow+Condensed:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E6EAED; --panel:#F3F5F6; --card:#FFFFFF; --ink:#16232D; --ink2:#4C5C68; --muted:#83919C;
+  --line:#D6DCE1; --blue:#1D5F9A; --blue-soft:#DCE8F3; --yellow:#F0B400;
+  --run:#2B9A5A; --idle:#9BA8B3; --blocked:#E08E12; --down:#D2452F; --off:#CCD3D9;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:400 13px/1.4 Barlow,"Helvetica Neue",Arial,sans-serif;display:flex;flex-direction:column;overflow:hidden;font-variant-numeric:tabular-nums}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,.chip:focus-visible,.srow:focus-visible{outline:2px solid var(--blue);outline-offset:2px}
+
+/* top bar */
+.bar{display:flex;align-items:center;gap:22px;padding:10px 18px;background:var(--card);border-bottom:1px solid var(--line);flex:none;flex-wrap:wrap}
+.brand{display:flex;align-items:center;gap:11px;margin-right:auto}
+.brand svg{flex:none}
+.brand h1{margin:0;font:600 21px/1 "Barlow Condensed",Barlow,sans-serif;letter-spacing:.01em}
+.brand p{margin:3px 0 0;color:var(--ink2);font-size:12px}
+.clock{text-align:right;line-height:1.1}
+.clock span{display:block;font:600 24px/1 "Barlow Condensed",Barlow,sans-serif}
+.clock small{color:var(--muted);font-size:11.5px}
+.status{display:flex;align-items:center;gap:7px;min-width:132px;font-weight:500}
+.status i{width:10px;height:10px;border-radius:50%;background:var(--run);flex:none}
+.status[data-m=paused] i{background:var(--blocked)}
+.status[data-m=stopping] i{background:var(--blocked)}
+.status[data-m=stopped] i{background:var(--idle)}
+.controls{display:flex;gap:6px}
+.controls button{display:flex;align-items:center;gap:7px;height:34px;padding:0 13px;border:1px solid var(--line);border-radius:6px;background:var(--card);font-weight:500}
+.controls button:hover:not(:disabled){border-color:var(--ink2)}
+.controls button:disabled{opacity:.38;cursor:default}
+.controls svg{width:11px;height:11px;fill:currentColor}
+#bStart:not(:disabled){background:var(--run);border-color:var(--run);color:#fff}
+.speed{display:flex;align-items:center;gap:8px;color:var(--ink2)}
+.seg{display:flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{border:0;background:var(--card);height:32px;padding:0 10px;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:0}
+.seg button[aria-pressed=true]{background:var(--ink);color:#fff}
+
+/* layout */
+.wrap{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 432px}
+.left{display:flex;flex-direction:column;min-width:0;min-height:0}
+.view{position:relative;flex:1;min-height:260px;overflow:hidden}
+#gl{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#gl:active{cursor:grabbing}
+#chips{position:absolute;inset:0;pointer-events:none;overflow:hidden}
+.chip{position:absolute;left:0;top:0;transform:translate(-50%,-100%);pointer-events:auto;display:flex;align-items:center;gap:6px;padding:3px 8px 3px 6px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.93);white-space:nowrap;font-size:12px;will-change:transform}
+.chip b{font-weight:600}
+.chip span{color:var(--ink2)}
+.chip[aria-pressed=true]{border-color:var(--blue);box-shadow:0 0 0 2px var(--blue-soft)}
+.chip.agv{pointer-events:none;background:rgba(22,35,45,.86);border-color:transparent;color:#fff;font-size:11px;padding:2px 7px}
+.chip.agv span{color:#C5D0D8}
+.dot{width:9px;height:9px;border-radius:50%;flex:none;background:var(--idle)}
+.RUN .dot,.dot.RUN{background:var(--run)} .IDLE .dot,.dot.IDLE{background:var(--idle)}
+.BLOCKED .dot,.dot.BLOCKED{background:var(--blocked)} .DOWN .dot,.dot.DOWN{background:var(--down)} .OFF .dot,.dot.OFF{background:var(--off)}
+.legend{position:absolute;left:14px;bottom:12px;display:flex;gap:14px;padding:6px 11px;background:rgba(255,255,255,.88);border-radius:6px;color:var(--ink2);font-size:12px}
+.legend span{display:flex;align-items:center;gap:6px}
+.hint{position:absolute;right:14px;bottom:12px;color:var(--ink2);font-size:12px;display:flex;gap:10px;align-items:center}
+.hint button{border:1px solid var(--line);background:rgba(255,255,255,.9);border-radius:6px;padding:4px 9px}
+#fail{position:absolute;inset:0;display:grid;place-items:center;padding:30px;text-align:center;color:var(--ink2);font-size:15px}
+#fail[hidden]{display:none}
+
+/* machine detail */
+.detail{position:absolute;left:14px;top:14px;width:300px;background:var(--card);border:1px solid var(--line);border-radius:8px;padding:13px 14px 14px;box-shadow:0 6px 22px rgba(22,35,45,.12)}
+.detail[hidden]{display:none}
+.detail h3{margin:0;font:600 19px/1.1 "Barlow Condensed",Barlow,sans-serif}
+.detail .sub{margin:3px 26px 9px 0;color:var(--ink2);font-size:12.5px}
+.detail .x{position:absolute;right:8px;top:8px;border:0;background:none;font-size:18px;line-height:1;padding:4px 7px;color:var(--ink2);border-radius:4px}
+.detail .state{display:flex;align-items:center;gap:7px;font-weight:500;margin-bottom:9px}
+.dl{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.dl div{background:var(--card);padding:6px 9px}
+.dl dt{color:var(--muted);font-size:11.5px}
+.dl dd{margin:0;font:600 17px/1.15 "Barlow Condensed",Barlow,sans-serif}
+.detail .act{margin-top:10px;width:100%;height:32px;border:1px solid var(--down);color:var(--down);background:#fff;border-radius:6px;font-weight:500}
+.detail .act:disabled{opacity:.4;cursor:default}
+
+/* station table */
+.stations{flex:none;background:var(--card);border-top:1px solid var(--line);padding:8px 16px 10px;overflow-x:auto}
+.srow,.shead{display:grid;grid-template-columns:168px 88px minmax(140px,1fr) 56px 54px 48px 56px 86px;align-items:center;gap:0 12px;min-width:720px}
+.shead{color:var(--muted);font-size:11.5px;padding:0 6px 4px;border-bottom:1px solid var(--line)}
+.shead .tl{display:flex;justify-content:space-between}
+.srow{padding:0 6px;height:28px;border:0;border-bottom:1px solid #EDF0F2;background:none;width:100%;text-align:left}
+.srow:hover{background:#F5F7F9}
+.srow[aria-pressed=true]{background:var(--blue-soft)}
+.srow .nm b{font-weight:600;margin-right:6px}
+.srow .st{display:flex;align-items:center;gap:6px}
+.srow canvas{width:100%;height:14px;display:block;border-radius:3px}
+.num{text-align:right}
+.crew{color:var(--ink2);font-size:12px}
+
+/* dashboard */
+aside{background:var(--panel);border-left:1px solid var(--line);overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:8px;padding:13px 14px}
+.card h2{margin:0 0 9px;font-size:13.5px;font-weight:600}
+.oee{display:grid;grid-template-columns:128px 1fr;gap:14px;align-items:center}
+.big{font:600 52px/0.95 "Barlow Condensed",Barlow,sans-serif}
+.big small{font-size:24px;font-weight:500;color:var(--ink2);margin-left:2px}
+.oee p{margin:5px 0 0;color:var(--ink2);font-size:12px}
+.meter{display:grid;grid-template-columns:82px 1fr 46px;align-items:center;gap:8px;margin:5px 0}
+.meter .trk,.bars .trk{height:8px;background:#E9EDF0;border-radius:4px;overflow:hidden}
+.meter .trk i,.bars .trk i{display:block;height:100%;background:var(--blue);border-radius:4px;width:0}
+.note{margin:8px 0 0;color:var(--muted);font-size:11.5px}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:10px 12px;margin-bottom:10px}
+.tile dt{color:var(--ink2);font-size:12px}
+.tile dd{margin:1px 0 0;font:600 25px/1.05 "Barlow Condensed",Barlow,sans-serif}
+.tile dd small{font-size:13px;font-weight:500;color:var(--muted);margin-left:3px}
+dl{margin:0}
+.chart{width:100%;height:112px;display:block}
+.chart.sm{height:78px;margin-top:8px}
+.cap{display:flex;justify-content:space-between;color:var(--ink2);font-size:12px;margin:8px 0 2px}
+.plan{margin:2px 0 10px}
+.plan .trk{height:8px;background:#E9EDF0;border-radius:4px;overflow:hidden}
+.plan .trk i{display:block;height:100%;background:var(--blue);border-radius:4px;width:0}
+.bars .r{display:grid;grid-template-columns:118px 1fr 92px;align-items:center;gap:8px;margin:5px 0;font-size:12.5px}
+.bars .r .v{text-align:right;color:var(--ink2)}
+.bars.dt .trk i{background:var(--down)}
+.agvr{display:grid;grid-template-columns:54px 1fr 92px 60px;gap:10px;align-items:center;padding:6px 0;border-top:1px solid #EDF0F2}
+.agvr:first-of-type{border-top:0}
+.agvr .bat{height:8px;background:#E9EDF0;border-radius:4px;overflow:hidden}
+.agvr .bat i{display:block;height:100%;background:var(--run)}
+.agvr .bat i.low{background:var(--down)}
+.agvr .s{color:var(--ink2)}
+.log{list-style:none;margin:0;padding:0;max-height:190px;overflow-y:auto;font-size:12.5px}
+.log li{display:grid;grid-template-columns:58px 1fr;gap:8px;padding:4px 0;border-top:1px solid #EDF0F2}
+.log li:first-child{border-top:0}
+.log time{color:var(--muted)}
+.log .bad{color:var(--down);font-weight:500}
+.log .empty{display:block;color:var(--muted)}
+
+@media (max-width:1040px){
+  body{overflow:auto;height:auto}
+  .wrap{display:block}
+  .view{height:62vh;flex:none}
+  aside{border-left:0;border-top:1px solid var(--line);overflow:visible}
+  .legend{flex-wrap:wrap;gap:6px 12px;right:14px}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+
+<header class="bar">
+  <div class="brand">
+    <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="15.5" fill="none" stroke="#16232D" stroke-width="3"/><circle cx="17" cy="17" r="6.5" fill="#1D5F9A"/><g fill="#16232D"><circle cx="17" cy="6.6" r="1.3"/><circle cx="27.4" cy="17" r="1.3"/><circle cx="17" cy="27.4" r="1.3"/><circle cx="6.6" cy="17" r="1.3"/></g></svg>
+    <div><h1>Kestrel Brake Works</h1><p>Line 2, vented brake discs: machining, coating and packing</p></div>
+  </div>
+  <div class="clock"><span id="clock">06:00:00</span><small id="elapsed">0:00:00 into shift</small></div>
+  <div class="status" id="status" data-m="running" aria-live="polite"><i></i><span>Running</span></div>
+  <div class="controls">
+    <button id="bStart" title="Start production, or resume from pause"><svg viewBox="0 0 10 10"><path d="M1 0l9 5-9 5z"/></svg>Start</button>
+    <button id="bPause" title="Freeze the simulation (Space)"><svg viewBox="0 0 10 10"><path d="M1 0h3v10H1zM6 0h3v10H6z"/></svg>Pause</button>
+    <button id="bStop" title="Controlled stop: stations finish their cycle, AGVs finish their job"><svg viewBox="0 0 10 10"><path d="M0 0h10v10H0z"/></svg>Stop</button>
+    <button id="bReset" title="Clear all data and return to the start of the shift"><svg viewBox="0 0 10 10"><path d="M5 1a4 4 0 1 0 4 4H7.6A2.6 2.6 0 1 1 5 2.4V4l3-2.5L5 0z"/></svg>Reset</button>
+  </div>
+  <div class="speed"><span>Speed</span>
+    <div class="seg" id="speed" role="group" aria-label="Simulation speed">
+      <button data-s="1">1×</button><button data-s="5">5×</button><button data-s="10">10×</button><button data-s="30">30×</button><button data-s="60">60×</button>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="left">
+    <section class="view" id="view" aria-label="Factory floor">
+      <canvas id="gl"></canvas>
+      <div id="chips"></div>
+      <div id="fail" hidden>The 3D view could not load three.js from the CDN. Check your internet connection and reload.</div>
+      <div class="detail" id="detail" hidden>
+        <button class="x" id="dClose" aria-label="Close station details">×</button>
+        <h3 id="dName"></h3>
+        <p class="sub" id="dOp"></p>
+        <div class="state" id="dState"><i class="dot"></i><span></span></div>
+        <dl class="dl" id="dGrid"></dl>
+        <button class="act" id="dFault">Trigger a fault</button>
+      </div>
+      <div class="legend" aria-label="Station states">
+        <span><i class="dot RUN"></i>Running</span><span><i class="dot IDLE"></i>Waiting for parts</span>
+        <span><i class="dot BLOCKED"></i>Blocked</span><span><i class="dot DOWN"></i>Down</span><span><i class="dot OFF"></i>Off</span>
+      </div>
+      <div class="hint"><span>Drag to rotate, scroll to zoom, right-drag to pan</span><button id="bView">Reset view</button></div>
+    </section>
+
+    <section class="stations" aria-label="Stations">
+      <div class="shead"><span>Station</span><span>State</span><span class="tl"><span>30 min ago</span><span>now</span></span>
+        <span class="num">OEE</span><span class="num">Parts</span><span class="num">Scrap</span><span class="num">kW</span><span>Crew</span></div>
+      <div id="srows"></div>
+    </section>
+  </div>
+
+  <aside aria-label="Line dashboard">
+    <div class="card">
+      <h2>Overall equipment effectiveness</h2>
+      <div class="oee">
+        <div><div class="big"><span id="kOee">0.0</span><small>%</small></div><p id="kOeeNote">Benchmark 85%</p></div>
+        <div>
+          <div class="meter"><span>Availability</span><div class="trk"><i id="mA"></i></div><span class="num" id="vA">0%</span></div>
+          <div class="meter"><span>Performance</span><div class="trk"><i id="mP"></i></div><span class="num" id="vP">0%</span></div>
+          <div class="meter"><span>Quality</span><div class="trk"><i id="mQ"></i></div><span class="num" id="vQ">0%</span></div>
+        </div>
+      </div>
+      <canvas class="chart sm" id="cOee" aria-label="OEE over time"></canvas>
+      <p class="note">Availability is the average across the seven stations. Performance is measured against the 46 s cycle of the lathe, the line's constraint.</p>
+    </div>
+
+    <div class="card">
+      <h2>Output</h2>
+      <dl class="tiles">
+        <div class="tile"><dt>Good discs</dt><dd id="kGood">0</dd></div>
+        <div class="tile"><dt>Scrap</dt><dd id="kScrap">0</dd></div>
+        <div class="tile"><dt>First-pass yield</dt><dd><span id="kFpy">100.0</span><small>%</small></dd></div>
+        <div class="tile"><dt>Throughput</dt><dd><span id="kRate">0</span><small>/h</small></dd></div>
+        <div class="tile"><dt>Pallets shipped</dt><dd id="kPal">0</dd></div>
+        <div class="tile"><dt>Work in progress</dt><dd id="kWip">0</dd></div>
+      </dl>
+      <div class="cap"><span>Plan attainment</span><span id="kPlan">0 of 0 planned</span></div>
+      <div class="plan"><div class="trk"><i id="mPlan"></i></div></div>
+      <div class="cap"><span>Throughput, discs per hour (5 min rolling)</span></div>
+      <canvas class="chart" id="cRate" aria-label="Throughput over time"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Energy</h2>
+      <dl class="tiles">
+        <div class="tile"><dt>Load now</dt><dd><span id="kKw">0</span><small>kW</small></dd></div>
+        <div class="tile"><dt>Consumed</dt><dd><span id="kKwh">0.0</span><small>kWh</small></dd></div>
+        <div class="tile"><dt>Per good disc</dt><dd><span id="kKpp">0.00</span><small>kWh</small></dd></div>
+      </dl>
+      <div class="cap"><span>Electrical load, kW</span><span id="kPeak">peak 0 kW</span></div>
+      <canvas class="chart" id="cKw" aria-label="Electrical load over time"></canvas>
+      <div class="cap"><span>Energy by consumer, kWh</span></div>
+      <div class="bars" id="eBars"></div>
+    </div>
+
+    <div class="card">
+      <h2>Downtime by station</h2>
+      <div class="bars dt" id="dBars"></div>
+    </div>
+
+    <div class="card">
+      <h2>AGV fleet</h2>
+      <div id="agvRows"></div>
+    </div>
+
+    <div class="card">
+      <h2>Event log</h2>
+      <ul class="log" id="log"></ul>
+    </div>
+  </aside>
+</div>
+
+<script type="module">
+/* ============================================================
+   three.js (ES module from CDN)
+   ============================================================ */
+const CDN = ['https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js',
+             'https://unpkg.com/three@0.160.0/build/three.module.js'];
+let THREE = null;
+for (const u of CDN) { try { THREE = await import(u); break; } catch (e) { /* try next */ } }
+const $ = id => document.getElementById(id);
+if (!THREE) { $('fail').hidden = false; }
+try { await Promise.race([document.fonts.load('600 60px "Barlow Condensed"'), new Promise(r => setTimeout(r, 1200))]); } catch (e) {}
+
+/* ============================================================
+   Plant definition
+   ============================================================ */
+const SHIFT_START = 6 * 3600;      // 06:00
+const IDEAL_CT = 46;               // constraint cycle (lathe), s
+const TARGET_RATE = 66;            // planned discs per hour
+const SPACING = 0.72, CONV_V = 0.3;
+const PALLET_QTY = 8, TOTE_RAW = 6, TOTE_WIP = 4;
+
+const MACH = [
+  {id:'M1', name:'CNC lathe',         op:'OP10, turns both braking faces',            type:'lathe', x:-8,    z:-5, hw:1.5, h:2.0,  ct:46, kwRun:24,  kwIdle:4.5, mtbf:3000, mttr:150, defect:.02,  crew:true},
+  {id:'M2', name:'Drilling centre',   op:'OP20, drills the bolt circle',              type:'mill',  x:-2,    z:-5, hw:1.2, h:2.95, ct:38, kwRun:16,  kwIdle:3,   mtbf:3600, mttr:140, defect:.012, crew:false},
+  {id:'M3', name:'Balancer',          op:'OP30, measures and corrects imbalance',     type:'bal',   x:4,     z:-5, hw:1.1, h:2.2,  ct:30, kwRun:6,   kwIdle:1.2, mtbf:6000, mttr:110, defect:0,    crew:true},
+  {id:'M4', name:'Washer',            op:'OP40, spray wash and hot-air dry',          type:'wash',  x:4,     z:5,  hw:1.7, h:1.75, ct:24, kwRun:19,  kwIdle:7,   mtbf:5000, mttr:120, defect:0,    crew:false},
+  {id:'M5', name:'Coating oven',      op:'OP50, zinc-flake coat and cure',            type:'oven',  x:-2,    z:5,  hw:1.8, h:2.1,  ct:40, kwRun:36,  kwIdle:15,  mtbf:4200, mttr:160, defect:.02,  crew:false},
+  {id:'M6', name:'Inspection cell',   op:'OP60, checks runout, thickness and surface',type:'insp',  x:-8,    z:5,  hw:1.1, h:2.2,  ct:22, kwRun:3.5, kwIdle:1,   mtbf:9000, mttr:90,  defect:0,    crew:true},
+  {id:'M7', name:'Palletising robot', op:'OP70, stacks eight discs per pallet',       type:'robot', x:-12.6, z:5,  hw:1.2, h:2.3,  ct:14, kwRun:5,   kwIdle:1,   mtbf:7000, mttr:100, defect:0,    crew:false},
+];
+const REASONS = {
+  lathe:['insert wear limit reached','chuck pressure low','chip conveyor jam'],
+  mill:['drill breakage','coolant level low','tool changer fault'],
+  bal:['spindle vibration alarm','clamp sensor fault'],
+  wash:['spray nozzle blocked','bath temperature low'],
+  oven:['spray gun clogged','cure zone over temperature'],
+  insp:['camera calibration drift','measuring probe fault'],
+  robot:['gripper vacuum lost','light curtain tripped'],
+};
+const CONV = [
+  {x0:-6.5, x1:-3.2,  z:-5},   // 0  M1 -> M2
+  {x0:-0.8, x1: 2.9,  z:-5},   // 1  M2 -> M3
+  {x0: 5.1, x1: 8.0,  z:-5},   // 2  M3 -> table A-out
+  {x0: 8.0, x1: 5.7,  z: 5},   // 3  table B-in -> M4
+  {x0: 2.3, x1:-0.2,  z: 5},   // 4  M4 -> M5
+  {x0:-3.8, x1:-6.9,  z: 5},   // 5  M5 -> M6
+  {x0:-9.1, x1:-11.5, z: 5},   // 6  M6 -> M7
+];
+CONV.forEach(c => c.len = Math.abs(c.x1 - c.x0));
+const SRC = [null, 0, 1, 3, 4, 5, 6];        // conveyor each station pulls from (M1 is hand loaded)
+const SNK = [0, 1, 2, 4, 5, 6, null];        // conveyor each station pushes to (M7 stacks the pallet)
+const STG = [1, 2, 2, 3, 4, 4, 4];           // part appearance after each station
+const TBL = { ain:{x:-14.5, z:-5}, aout:{x:9.5, z:-5}, bin:{x:9.5, z:5} };
+const PALLET_POS = {x:-14.9, z:5};
+
+// AGV loop: one-way rectangle. s runs 0..100 m, starting at the back-left corner.
+const RING = {x0:-17.5, x1:12.5, z0:-10, z1:10}, RING_L = 100;
+const ST = { SHIP:7.5, AOUT:35, BIN:45, RAW:72.5, PAL:85, AIN:95 };
+function ringPos(s) {
+  s = ((s % RING_L) + RING_L) % RING_L;
+  if (s < 30) return {x:RING.x0 + s, z:RING.z0, yaw:0};
+  if (s < 50) return {x:RING.x1, z:RING.z0 + (s - 30), yaw:-Math.PI / 2};
+  if (s < 80) return {x:RING.x1 - (s - 50), z:RING.z1, yaw:Math.PI};
+  return {x:RING.x0, z:RING.z1 - (s - 80), yaw:Math.PI / 2};
+}
+const fwd = (a, b) => (((b - a) % RING_L) + RING_L) % RING_L;
+const AGV_V = 1.4, AGV_GAP = 3.2, AGV_HANDLING = 8;
+
+const OP1 = { table:{x:-13.4, z:-3.45}, mach:{x:-8.5, z:-3.3} };
+const TECH_HOME = {x:7, z:1}, WALK_V = 1.45;
+const servicePt = i => ({ x:MACH[i].x + 0.95, z:MACH[i].z < 0 ? MACH[i].z + 1.85 : MACH[i].z - 1.85 });
+
+/* ============================================================
+   Simulation
+   ============================================================ */
+function rng32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+
+let runNo = 0;
+function newSim() {
+  const S = {
+    t:0, mode:'running', rng:rng32(20261006 + 977 * runNo++), nid:1,
+    buf:{ain:[], aout:[], bin:[]}, pallet:[], conv:CONV.map(() => []),
+    mach:MACH.map(() => ({part:null, prog:0, ctAct:0, done:false, down:false, techHere:false, repairLeft:0, downAt:0, reason:'',
+      state:'IDLE', ts:{RUN:0, IDLE:0, BLOCKED:0, DOWN:0, OFF:0}, count:0, scrap:0, kwh:0, kw:0, stops:0, lastCt:0, segs:[]})),
+    agv:[0, 1].map(k => ({id:k + 1, s:k ? 60 : 20, state:'idle', task:null, load:[], kind:null, timer:0, battery:k ? 78 : 92, dist:0, trips:0, moving:false, pushed:false, lowBat:false, busyT:0})),
+    tasks:[], pend:{raw:false, wip:false, fg:false},
+    tech:{x:TECH_HOME.x, z:TECH_HOME.z, yaw:0, state:'home', job:null, path:[], queue:[]},
+    op1:{x:OP1.mach.x, z:OP1.mach.z, yaw:Math.PI, state:'idle', carry:null},
+    good:0, scrap:0, shippedPallets:0, shippedParts:0, kw:0, kwh:0, auxKwh:0, agvKwh:0, peakKw:0,
+    plannedT:0, outT:[], hist:[], kwAcc:0, accT:0, nextSample:20, log:[], logDirty:true,
+  };
+  const mk = stage => ({id:S.nid++, stage, bad:null, checked:false});
+  // the line starts the shift with the work in progress left by the previous one
+  for (let i = 0; i < 8; i++) S.buf.ain.push(mk(0));
+  S.buf.aout.push(mk(2));
+  for (let i = 0; i < 2; i++) S.buf.bin.push(mk(2));
+  const pre = [[1, 1], [1, 2], [1, 2], [1, 2], [1, 3], [1, 4], [0, 4]];
+  pre.forEach(([n, stage], c) => { for (let k = 0; k < n; k++) S.conv[c].push({part:mk(stage), pos:CONV[c].len - k * SPACING}); });
+  for (let i = 0; i < 3; i++) S.pallet.push(mk(4));
+  return S;
+}
+function logEv(S, msg, bad) { S.log.unshift({t:S.t, msg, bad:!!bad}); if (S.log.length > 60) S.log.pop(); S.logDirty = true; }
+
+function startPart(S, i, p) {
+  const d = MACH[i], m = S.mach[i];
+  m.part = p; m.prog = 0; m.done = false; m.ctAct = d.ct * (1 + S.rng() * 0.12);
+  if (p.bad == null && S.rng() < d.defect) p.bad = i;
+}
+function scrapPart(S, p, at) {
+  S.scrap++; S.mach[p.bad].scrap++;
+  logEv(S, `Disc scrapped at ${MACH[at].id} ${MACH[at].name.toLowerCase()}, defect from ${MACH[p.bad].id}`, true);
+}
+// try to move the finished part out of station i; false means blocked
+function finish(S, i) {
+  const m = S.mach[i], p = m.part;
+  if (i === 6) {
+    if (S.pallet.length >= PALLET_QTY) return false;
+    p.stage = STG[i]; S.pallet.push(p); S.good++; S.outT.push(S.t); return true;
+  }
+  if (i === 2 && p.bad != null && !p.checked) { p.checked = true; if (S.rng() < 0.55) { scrapPart(S, p, i); return true; } }
+  if (i === 5 && p.bad != null) { scrapPart(S, p, i); return true; }
+  const c = S.conv[SNK[i]];
+  if (c.length && c[c.length - 1].pos < SPACING) return false;
+  p.stage = STG[i]; c.push({part:p, pos:0}); return true;
+}
+function fault(S, i, manual) {
+  const d = MACH[i], m = S.mach[i];
+  if (m.down) return;
+  m.down = true; m.techHere = false; m.stops++; m.downAt = S.t;
+  m.repairLeft = d.mttr * (0.6 + S.rng() * 0.8);
+  const r = REASONS[d.type]; m.reason = manual ? 'fault triggered from the dashboard' : r[Math.floor(S.rng() * r.length)];
+  S.tech.queue.push(i);
+  logEv(S, `${d.id} ${d.name} down: ${m.reason}`, true);
+}
+
+function stepMachine(S, i, dt, run, live) {
+  const d = MACH[i], m = S.mach[i];
+  let st = null;
+  if (m.down) {
+    st = 'DOWN';
+    if (m.techHere) {
+      m.repairLeft -= dt;
+      if (m.repairLeft <= 0) { m.down = false; m.techHere = false; logEv(S, `${d.id} ${d.name} repaired after ${fmtDur(S.t - m.downAt)}`); }
+    }
+  } else if (live) {
+    if (m.part && !m.done) {
+      m.prog += dt; st = 'RUN';
+      if (S.rng() < dt / d.mtbf) { fault(S, i); st = 'DOWN'; }
+      else if (m.prog >= m.ctAct) m.done = true;
+    }
+    if (!m.down && m.part && m.done) {
+      if (finish(S, i)) { m.count++; m.lastCt = m.ctAct; m.part = null; m.done = false; }
+      else st = st || 'BLOCKED';
+    }
+    if (!m.down && !m.part && run && SRC[i] != null) {
+      const c = S.conv[SRC[i]];
+      if (c.length && c[0].pos >= CONV[SRC[i]].len - 1e-3) { startPart(S, i, c.shift().part); st = st || 'RUN'; }
+    }
+    if (!st) st = run ? 'IDLE' : 'OFF';
+  } else st = 'OFF';
+
+  m.kw = st === 'RUN' ? d.kwRun * (0.72 + 0.4 * Math.sin(Math.PI * Math.min(1, m.prog / (m.ctAct || 1))))
+       : st === 'IDLE' || st === 'BLOCKED' ? d.kwIdle : st === 'DOWN' ? d.kwIdle * 0.6 : d.kwIdle * 0.25;
+  m.kwh += m.kw * dt / 3600; m.ts[st] += dt;
+  if (m.state !== st || !m.segs.length) { m.segs.push({s:st, t:S.t - dt}); if (m.segs.length > 400) m.segs.shift(); }
+  m.state = st;
+}
+
+function walk(o, target, dt) {
+  const dx = target.x - o.x, dz = target.z - o.z, dist = Math.hypot(dx, dz), stepLen = WALK_V * dt;
+  if (dist <= stepLen) { o.x = target.x; o.z = target.z; return true; }
+  o.x += dx / dist * stepLen; o.z += dz / dist * stepLen; o.yaw = Math.atan2(dx, dz); return false;
+}
+function stepOperator(S, dt, run) {
+  const o = S.op1, m = S.mach[0];
+  if (o.state === 'idle') { if (run && S.buf.ain.length) o.state = 'toTable'; }
+  else if (o.state === 'toTable') {
+    if (walk(o, OP1.table, dt)) { o.yaw = Math.PI; if (S.buf.ain.length) { o.carry = S.buf.ain.pop(); o.state = 'toMach'; } else if (!run) o.state = 'back'; }
+  } else if (o.state === 'toMach') { if (walk(o, OP1.mach, dt)) { o.yaw = Math.PI; o.state = 'hold'; } }
+  else if (o.state === 'back') { if (walk(o, OP1.mach, dt)) { o.yaw = Math.PI; o.state = 'idle'; } }
+  else if (o.state === 'hold') {
+    if (run && !m.down && !m.part) { startPart(S, 0, o.carry); o.carry = null; o.state = 'idle'; }
+  }
+}
+function route(from, to) { return [{x:from.x, z:1}, {x:to.x, z:1}, {x:to.x, z:to.z}]; }
+function stepTech(S, dt) {
+  const T = S.tech;
+  if ((T.state === 'home' || T.state === 'return') && T.queue.length) { T.job = T.queue.shift(); T.path = route(T, servicePt(T.job)); T.state = 'walk'; }
+  if (T.state === 'walk' || T.state === 'return') {
+    if (!T.path.length || walk(T, T.path[0], dt)) T.path.shift();
+    if (!T.path.length) {
+      if (T.state === 'walk') { T.state = 'repair'; S.mach[T.job].techHere = true; T.yaw = MACH[T.job].z < 0 ? Math.PI : 0; }
+      else { T.state = 'home'; T.yaw = 0; }
+    }
+  } else if (T.state === 'repair' && !S.mach[T.job].down) {
+    T.job = null;
+    if (T.queue.length) { T.job = T.queue.shift(); T.path = route(T, servicePt(T.job)); T.state = 'walk'; }
+    else { T.path = route(T, TECH_HOME); T.state = 'return'; }
+  }
+}
+
+function agvAdvance(S, a, dt, target) {
+  let stepLen = AGV_V * dt, arrive = false;
+  if (target != null) { const rem = fwd(a.s, target); if (rem <= stepLen) { stepLen = rem; arrive = true; } }
+  for (const o of S.agv) {
+    if (o === a) continue;
+    const gap = fwd(a.s, o.s);
+    if (gap < AGV_GAP + 1.5 && o.state === 'idle') o.pushed = true;
+    if (gap < AGV_GAP + stepLen) { stepLen = Math.max(0, gap - AGV_GAP); arrive = false; }
+  }
+  a.s = arrive ? target : (a.s + stepLen) % RING_L;
+  a.dist += stepLen; a.battery = Math.max(0, a.battery - 0.08 * stepLen); a.moving = stepLen > 1e-6;
+  return arrive;
+}
+function stepAgv(S, a, dt) {
+  a.moving = false;
+  if (a.state !== 'idle') a.busyT += dt;
+  switch (a.state) {
+    case 'idle':
+      if (a.pushed) agvAdvance(S, a, dt, null);
+      else { a.battery = Math.min(100, a.battery + 0.12 * dt); if (a.lowBat && a.battery > 50) a.lowBat = false; }
+      break;
+    case 'toPick': if (agvAdvance(S, a, dt, a.task.pick)) { a.state = 'loading'; a.timer = AGV_HANDLING; } break;
+    case 'toDrop': if (agvAdvance(S, a, dt, a.task.drop)) { a.state = 'unloading'; a.timer = AGV_HANDLING; } break;
+    case 'loading':
+      a.timer -= dt;
+      if (a.timer <= 0) {
+        const ty = a.task.type;
+        if (ty === 'raw') { a.load = []; for (let k = 0; k < TOTE_RAW; k++) a.load.push({id:S.nid++, stage:0, bad:null, checked:false}); a.kind = 'tote'; }
+        else if (ty === 'wip') { a.load = S.buf.aout.splice(0, TOTE_WIP); a.kind = 'tote'; }
+        else { a.load = S.pallet; S.pallet = []; a.kind = 'pallet'; }
+        a.state = 'toDrop';
+      }
+      break;
+    case 'unloading':
+      a.timer -= dt;
+      if (a.timer <= 0) {
+        const ty = a.task.type;
+        if (ty === 'raw') S.buf.ain.push(...a.load);
+        else if (ty === 'wip') S.buf.bin.push(...a.load);
+        else { S.shippedPallets++; S.shippedParts += a.load.length; logEv(S, `Pallet ${S.shippedPallets} handed to shipping by AGV ${a.id}`); }
+        S.pend[ty] = false; a.load = []; a.kind = null; a.task = null; a.trips++; a.state = 'idle';
+        if (a.battery < 20) a.lowBat = true;
+      }
+      break;
+  }
+  a.pushed = false;
+}
+function dispatch(S) {
+  const P = S.pend;
+  if (!P.raw && S.buf.ain.length <= 4) { P.raw = true; S.tasks.push({type:'raw', pick:ST.RAW, drop:ST.AIN}); }
+  if (!P.wip && S.buf.aout.length >= TOTE_WIP && S.buf.bin.length <= 8) { P.wip = true; S.tasks.push({type:'wip', pick:ST.AOUT, drop:ST.BIN}); }
+  if (!P.fg && S.pallet.length >= PALLET_QTY) { P.fg = true; S.tasks.push({type:'fg', pick:ST.PAL, drop:ST.SHIP}); }
+  for (let k = 0; k < S.tasks.length; k++) {
+    const t = S.tasks[k]; let best = null, bd = 1e9;
+    for (const a of S.agv) { if (a.state !== 'idle' || a.lowBat) continue; const d = fwd(a.s, t.pick); if (d < bd) { bd = d; best = a; } }
+    if (!best) break;
+    best.task = t; best.state = 'toPick'; S.tasks.splice(k, 1); k--;
+  }
+}
+
+function step(S, dt) {
+  S.t += dt;
+  const run = S.mode === 'running', live = S.mode !== 'stopped';
+  if (live) {
+    for (let c = 0; c < CONV.length; c++) {
+      const items = S.conv[c], len = CONV[c].len;
+      for (let k = 0; k < items.length; k++) {
+        const max = k === 0 ? len : items[k - 1].pos - SPACING;
+        items[k].pos = Math.max(items[k].pos, Math.min(items[k].pos + CONV_V * dt, max));
+      }
+    }
+    let c = S.conv[2];
+    if (c.length && c[0].pos >= CONV[2].len - 1e-3 && S.buf.aout.length < 12) S.buf.aout.push(c.shift().part);
+    c = S.conv[3];
+    if (S.buf.bin.length && (!c.length || c[c.length - 1].pos >= SPACING)) c.push({part:S.buf.bin.shift(), pos:0});
+  }
+  for (let i = 0; i < MACH.length; i++) stepMachine(S, i, dt, run, live);
+  stepOperator(S, dt, run);
+  stepTech(S, dt);
+  if (run) dispatch(S);
+  for (const a of S.agv) stepAgv(S, a, dt);
+
+  if (S.mode === 'stopping' && S.mach.every(m => m.down || !m.part || m.done) && S.agv.every(a => a.state === 'idle')
+      && (S.op1.state === 'idle' || S.op1.state === 'hold')) { S.mode = 'stopped'; logEv(S, 'Line stopped, stations on standby'); }
+
+  // energy and line accounting
+  let kw = 0; for (const m of S.mach) kw += m.kw;
+  const aux = live ? 14 : 5; let agvKw = 0;
+  for (const a of S.agv) if (a.state === 'idle' && !a.moving && a.battery < 100) agvKw += 0.9;
+  kw += aux + agvKw;
+  S.kw = kw; S.kwh += kw * dt / 3600; S.auxKwh += aux * dt / 3600; S.agvKwh += agvKw * dt / 3600;
+  if (kw > S.peakKw) S.peakKw = kw;
+  if (live) S.plannedT += dt;
+  S.kwAcc += kw * dt; S.accT += dt;
+  if (S.t >= S.nextSample) {
+    S.hist.push({t:S.t, rate:rateNow(S), kw:S.kwAcc / S.accT, oee:lineKpi(S).oee * 100});
+    if (S.hist.length > 200) S.hist.shift();
+    S.kwAcc = 0; S.accT = 0; S.nextSample += 20;
+  }
+}
+
+/* ---------- KPIs ---------- */
+function rateNow(S) {
+  while (S.outT.length && S.outT[0] < S.t - 300) S.outT.shift();
+  return S.outT.length * 12;
+}
+function machKpi(S, i) {
+  const m = S.mach[i], ts = m.ts, total = ts.RUN + ts.IDLE + ts.BLOCKED + ts.DOWN + ts.OFF;
+  const planned = total - ts.OFF, up = planned - ts.DOWN;
+  const A = planned > 0 ? up / planned : 1;
+  const P = up > 0 ? Math.min(1, MACH[i].ct * m.count / up) : 0;
+  const Q = m.count ? (m.count - m.scrap) / m.count : 1;
+  return {A, P, Q, oee:A * P * Q, planned};
+}
+function lineKpi(S) {
+  let A = 0; for (let i = 0; i < MACH.length; i++) A += machKpi(S, i).A; A /= MACH.length;
+  const Q = S.good + S.scrap ? S.good / (S.good + S.scrap) : 1;
+  const raw = S.plannedT > 0 ? S.good * IDEAL_CT / S.plannedT : 0;
+  const P = A * Q > 0 ? Math.min(1, raw / (A * Q)) : 0;
+  return {A, P, Q, oee:A * P * Q};
+}
+function wipCount(S) {
+  let n = S.buf.aout.length + S.buf.bin.length + S.pallet.length + (S.op1.carry ? 1 : 0);
+  for (const c of S.conv) n += c.length;
+  for (const m of S.mach) if (m.part) n++;
+  for (const a of S.agv) if (a.task && a.task.type !== 'raw') n += a.load.length;
+  return n;
+}
+const pad = n => String(n).padStart(2, '0');
+function fmtClock(t) { t = Math.floor(SHIFT_START + t) % 86400; return `${pad(Math.floor(t / 3600))}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)}`; }
+function fmtDur(t) { t = Math.max(0, Math.round(t)); return `${Math.floor(t / 60)}:${pad(t % 60)}`; }
+function fmtHms(t) { t = Math.floor(t); return `${Math.floor(t / 3600)}:${pad(Math.floor(t / 60) % 60)}:${pad(t % 60)}`; }
+
+let S = newSim();
+logEv(S, 'Shift started, line running');
+let paused = false, speed = 10, selected = -1;
+
+/* ============================================================
+   3D scene
+   ============================================================ */
+const view3d = {az:Math.PI / 4, el:Math.atan(1 / Math.SQRT2), zoom:1, tx:-2.5, tz:0};
+let renderer, scene, cam, G = null;
+
+function buildScene() {
+  const canvas = $('gl');
+  renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  scene = new THREE.Scene(); scene.background = new THREE.Color(0xE6EAED);
+  cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 400);
+
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xB9C4CC, 1.45));
+  const sun = new THREE.DirectionalLight(0xffffff, 2.0);
+  sun.position.set(-27, 42, 20); sun.target.position.set(-2.5, 0, 0); scene.add(sun, sun.target);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  Object.assign(sun.shadow.camera, {left:-34, right:34, top:28, bottom:-28, near:1, far:130});
+  sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.04;
+
+  const mats = new Map();
+  const M = c => { if (!mats.has(c)) mats.set(c, new THREE.MeshLambertMaterial({color:c})); return mats.get(c); };
+  const basic = c => new THREE.MeshBasicMaterial({color:c});
+  const box = (p, w, h, d, x, y, z, m) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), typeof m === 'number' ? M(m) : m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; p.add(o); return o; };
+  const cyl = (p, r, h, x, y, z, m, seg = 20) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, h, seg), typeof m === 'number' ? M(m) : m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; p.add(o); return o; };
+  const flat = (w, d, x, z, m, y = 0.012) => { const o = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); o.rotation.x = -Math.PI / 2; o.position.set(x, y, z); o.receiveShadow = true; scene.add(o); return o; };
+
+  const C = {body:0xE3E7EA, navy:0x24384A, blue:0x1D5F9A, steel:0xC6D0D7, dark:0x38434C, yellow:0xF0B400, glass:0x2B4155, wood:0xC9A26B, floor:0xD3D8DB};
+
+  // floor slab and back walls
+  box(scene, 40, 0.6, 30, -2.5, -0.3, 0, C.floor).castShadow = false;
+  box(scene, 40, 3.0, 0.3, -2.5, 1.5, -15.15, 0xEDF0F2);
+  box(scene, 40, 0.5, 0.32, -2.5, 2.3, -15.15, C.blue);
+  box(scene, 0.3, 3.0, 30.3, -22.65, 1.5, -0.15, 0xEDF0F2);
+  box(scene, 0.32, 0.5, 30.3, -22.65, 2.3, -0.15, C.blue);
+  box(scene, 4.4, 2.6, 0.12, -10, 1.3, -14.95, 0x7F8C97);                       // shipping dock door
+  for (let k = 0; k < 6; k++) box(scene, 4.4, 0.04, 0.14, -10, 0.4 + k * 0.4, -14.94, 0x6B7882);
+
+  // floor paint
+  const paint = new THREE.MeshLambertMaterial({color:C.yellow});
+  const lane = (x0, z0, x1, z1) => flat(Math.abs(x1 - x0) + 0.14, Math.abs(z1 - z0) + 0.14, (x0 + x1) / 2, (z0 + z1) / 2, paint);
+  for (const off of [-0.75, 0.75]) {
+    lane(RING.x0 - off, RING.z0 - off, RING.x1 + off, RING.z0 - off); lane(RING.x0 - off, RING.z1 + off, RING.x1 + off, RING.z1 + off);
+    lane(RING.x0 - off, RING.z0 - off, RING.x0 - off, RING.z1 + off); lane(RING.x1 + off, RING.z0 - off, RING.x1 + off, RING.z1 + off);
+  }
+  flat(21, 1.5, -2.5, 1, new THREE.MeshLambertMaterial({color:0xC2D6CB}));        // pedestrian aisle
+  const hz = document.createElement('canvas'); hz.width = hz.height = 64;
+  { const c = hz.getContext('2d'); c.fillStyle = '#F0B400'; c.fillRect(0, 0, 64, 64); c.strokeStyle = '#2A333B'; c.lineWidth = 15; for (let k = -64; k < 128; k += 32) { c.beginPath(); c.moveTo(k, 64); c.lineTo(k + 64, 0); c.stroke(); } }
+  const stops = [[ST.SHIP, 'Shipping'], [ST.AOUT, 'Pick WIP'], [ST.BIN, 'Drop WIP'], [ST.RAW, 'Raw castings'], [ST.PAL, 'Pick pallet'], [ST.AIN, 'Drop raw']];
+  for (const [s] of stops) {
+    const p = ringPos(s), tex = new THREE.CanvasTexture(hz); tex.wrapS = tex.wrapT = THREE.RepeatWrapping; tex.repeat.set(4, 2); tex.colorSpace = THREE.SRGBColorSpace;
+    const horiz = Math.abs(Math.cos(p.yaw)) > 0.5;
+    flat(horiz ? 2.6 : 1.36, horiz ? 1.36 : 2.6, p.x, p.z, new THREE.MeshLambertMaterial({map:tex, transparent:true, opacity:0.55}), 0.016);
+  }
+  const floorText = (text, x, z, size = 1.0, color = '#5E6C77') => {
+    const cv = document.createElement('canvas'); cv.width = 1024; cv.height = 128; const c = cv.getContext('2d');
+    c.font = '600 92px "Barlow Condensed", "Arial Narrow", Arial, sans-serif'; c.fillStyle = color; c.textBaseline = 'middle'; c.fillText(text.toUpperCase(), 6, 68);
+    const w = Math.min(1024, c.measureText(text.toUpperCase()).width + 12);
+    const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace; tex.repeat.set(w / 1024, 1); tex.anisotropy = 4;
+    const o = flat(size * w / 128, size, x + size * w / 256, z, new THREE.MeshBasicMaterial({map:tex, transparent:true}), 0.02); o.receiveShadow = false;
+  };
+  floorText('Raw castings', -13.4, 14.1, 0.85); floorText('Shipping', -7.4, -12.6, 0.85);
+  floorText('Machining', -12.4, -8.1, 0.8); floorText('Finishing and packing', -12.4, 2.75, 0.8); floorText('Maintenance', 8.3, 0.7, 0.6);
+
+  // conveyors
+  for (const c of CONV) {
+    const mid = (c.x0 + c.x1) / 2;
+    box(scene, c.len, 0.12, 0.7, mid, 0.86, c.z, C.dark);
+    box(scene, c.len, 0.1, 0.05, mid, 0.93, c.z + 0.38, C.steel); box(scene, c.len, 0.1, 0.05, mid, 0.93, c.z - 0.38, C.steel);
+    const n = Math.max(2, Math.round(c.len / 1.4));
+    for (let k = 0; k < n; k++) { const x = Math.min(c.x0, c.x1) + 0.25 + k * (c.len - 0.5) / (n - 1); box(scene, 0.08, 0.8, 0.6, x, 0.4, c.z, C.steel); }
+  }
+  // buffer tables
+  for (const k in TBL) {
+    const t = TBL[k];
+    box(scene, 3, 0.08, 2, t.x, 0.88, t.z, 0xAEBBC5);
+    for (const [dx, dz] of [[-1.4, -0.9], [1.4, -0.9], [-1.4, 0.9], [1.4, 0.9]]) box(scene, 0.09, 0.84, 0.09, t.x + dx, 0.42, t.z + dz, C.dark);
+  }
+  // pallet stations, raw store, scrap bins, maintenance bench
+  const palletBoard = (x, z) => { box(scene, 1.4, 0.1, 1.4, x, 0.1, z, C.wood); box(scene, 1.4, 0.05, 0.14, x, 0.025, z - 0.5, C.wood); box(scene, 1.4, 0.05, 0.14, x, 0.025, z + 0.5, C.wood); };
+  palletBoard(PALLET_POS.x, PALLET_POS.z);
+  for (const x of [-11.6, -10, -8.4]) palletBoard(x, 12.2);
+  for (const x of [-12.5, -9.25, -7.45]) { box(scene, 0.1, 2.6, 0.1, x, 1.3, 11.4, C.blue); box(scene, 0.1, 2.6, 0.1, x, 1.3, 13.0, C.blue); }
+  box(scene, 5.15, 0.08, 1.7, -9.97, 2.6, 12.2, 0xE39A1C); box(scene, 5.15, 0.08, 1.7, -9.97, 1.55, 12.2, 0xE39A1C);
+  const shipSpots = [0, 1, 2].map(k => ({x:-11.7 + k * 1.7, z:-12.3}));
+  box(scene, 0.8, 0.7, 0.8, 4.2, 0.35, -6.75, 0xC2452F); box(scene, 0.8, 0.7, 0.8, -9.55, 0.35, 3.3, 0xC2452F);
+  box(scene, 1.7, 0.85, 0.75, 7.1, 0.425, -0.35, C.navy); box(scene, 1.74, 0.05, 0.8, 7.1, 0.875, -0.35, C.steel); box(scene, 0.4, 0.25, 0.25, 6.7, 1.03, -0.35, 0xC2452F);
+
+  // machines
+  const machVis = MACH.map((d, i) => {
+    const g = new THREE.Group(); g.position.set(d.x, 0, d.z); scene.add(g);
+    const v = {g, lamp:null, win:null, extra:{}};
+    const pendant = (x, y) => { box(g, 0.5, 0.7, 0.1, x, y, 1.17, C.navy); box(g, 0.36, 0.26, 0.02, x, y + 0.14, 1.23, basic(0x8FD0F5)); };
+    let lx = d.hw - 0.25, lz = -0.7, ly = d.h;
+    if (d.type === 'lathe') {
+      box(g, 3.0, 0.35, 2.2, 0, 0.175, 0, C.navy); box(g, 3.0, 1.35, 2.2, 0, 1.025, 0, C.body); box(g, 3.02, 0.3, 2.22, 0, 1.85, 0, C.blue);
+      v.win = box(g, 1.35, 0.75, 0.05, -0.4, 1.15, 1.11, basic(C.glass)); pendant(0.95, 1.2);
+      box(g, 0.5, 0.55, 0.9, -1.75, 0.275, -0.4, C.dark);
+    } else if (d.type === 'mill') {
+      box(g, 2.4, 0.35, 2.2, 0, 0.175, 0, C.navy); box(g, 2.4, 1.85, 2.2, 0, 1.275, 0, C.body); box(g, 2.42, 0.25, 2.22, 0, 2.325, 0, C.blue);
+      box(g, 0.9, 0.5, 0.9, 0, 2.7, -0.3, C.navy); ly = 2.45; lx = 0.95; lz = 0.6;
+      v.win = box(g, 1.0, 0.95, 0.05, -0.35, 1.35, 1.11, basic(C.glass)); pendant(0.75, 1.3);
+    } else if (d.type === 'bal') {
+      box(g, 2.2, 0.9, 1.6, 0, 0.45, 0, C.body); box(g, 2.22, 0.14, 1.62, 0, 0.3, 0, C.navy);
+      box(g, 0.45, 1.3, 0.4, 0, 1.55, -0.55, C.blue); cyl(g, 0.12, 0.1, 0, 0.92, 0.1, C.dark);
+      box(g, 0.6, 0.06, 0.5, 0, 2.17, -0.3, C.blue); box(g, 0.55, 0.42, 0.06, 0.75, 1.45, 0.45, C.navy); box(g, 0.45, 0.3, 0.02, 0.75, 1.45, 0.49, basic(0x8FD0F5));
+      box(g, 0.06, 0.6, 0.06, 0.75, 1.0, 0.45, C.dark); ly = 2.2; lx = 0; lz = -0.55;
+    } else if (d.type === 'wash') {
+      for (const [dx, dz] of [[-1.5, -0.7], [1.5, -0.7], [-1.5, 0.7], [1.5, 0.7]]) box(g, 0.12, 0.5, 0.12, dx, 0.25, dz, C.dark);
+      box(g, 3.4, 1.25, 1.8, 0, 1.125, 0, C.steel); box(g, 3.42, 0.12, 1.82, 0, 0.56, 0, C.navy);
+      box(g, 0.04, 0.34, 0.9, 1.71, 1.06, 0, C.dark); box(g, 0.04, 0.34, 0.9, -1.71, 1.06, 0, C.dark);
+      cyl(g, 0.16, 0.9, 0.9, 2.2, -0.45, C.steel); cyl(g, 0.07, 1.6, -0.9, 1.9, -0.6, C.blue).rotation.z = Math.PI / 2;
+      box(g, 0.7, 0.5, 0.05, -0.6, 1.2, 0.91, C.navy);
+      v.extra.steam = [0, 1, 2].map(() => { const s = new THREE.Mesh(new THREE.SphereGeometry(0.2, 10, 8), new THREE.MeshBasicMaterial({color:0xffffff, transparent:true, opacity:0})); g.add(s); return s; });
+      ly = 1.75; lx = -1.4; lz = -0.6;
+    } else if (d.type === 'oven') {
+      box(g, 3.6, 0.3, 2.2, 0, 0.15, 0, C.navy); box(g, 3.6, 1.8, 2.2, 0, 1.2, 0, C.blue);
+      box(g, 0.04, 0.34, 0.9, 1.81, 1.06, 0, C.dark); box(g, 0.04, 0.34, 0.9, -1.81, 1.06, 0, C.dark);
+      v.win = box(g, 2.2, 0.22, 0.05, -0.3, 1.25, 1.11, basic(0xFF8A30));
+      cyl(g, 0.17, 1.1, -1.0, 2.65, -0.5, C.steel); cyl(g, 0.17, 1.1, 0.3, 2.65, -0.5, C.steel);
+      box(g, 0.5, 0.6, 0.08, 1.3, 1.35, 1.12, C.navy); box(g, 0.36, 0.24, 0.02, 1.3, 1.45, 1.17, basic(0x8FD0F5));
+      ly = 2.1; lx = 1.5; lz = 0.7;
+    } else if (d.type === 'insp') {
+      box(g, 2.2, 0.9, 1.5, 0, 0.45, 0, C.body); box(g, 2.22, 0.14, 1.52, 0, 0.3, 0, C.navy);
+      for (const [dx, dz] of [[-1.04, -0.69], [1.04, -0.69], [-1.04, 0.69], [1.04, 0.69]]) box(g, 0.08, 1.25, 0.08, dx, 1.525, dz, C.blue);
+      box(g, 2.2, 0.08, 1.5, 0, 2.17, 0, C.blue); box(g, 0.26, 0.34, 0.26, 0, 1.96, 0, C.navy);
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.34, 0.045, 8, 28), basic(0xFFFFFF)); ring.rotation.x = Math.PI / 2; ring.position.set(0, 1.62, 0); g.add(ring);
+      v.extra.ring = ring; ly = 2.2; lx = 0.9; lz = -0.6;
+    } else if (d.type === 'robot') {
+      cyl(g, 0.42, 0.3, 0, 0.15, 0, C.navy, 24); cyl(g, 0.22, 1.2, 0, 0.9, 0, C.yellow); cyl(g, 0.3, 0.3, 0, 1.6, 0, C.yellow, 24);
+      const boom = new THREE.Mesh(new THREE.BoxGeometry(1, 0.16, 0.16).translate(0.5, 0, 0), M(C.yellow)); boom.castShadow = true; boom.position.set(d.x, 1.6, d.z); scene.add(boom);
+      const grip = new THREE.Group(); cyl(grip, 0.05, 0.4, 0, 0.28, 0, C.dark, 10); cyl(grip, 0.2, 0.06, 0, 0.08, 0, C.dark); scene.add(grip);
+      v.extra.boom = boom; v.extra.grip = grip; v.extra.gp = new THREE.Vector3(-11.5, 1.7, 5);
+      flat(5.2, 3.4, -13.4, 5, new THREE.MeshLambertMaterial({color:C.yellow, transparent:true, opacity:0.22}), 0.014);
+      box(g, 0.1, 2.0, 0.1, 0.8, 1.0, -1.3, C.dark); ly = 2.0; lx = 0.8; lz = -1.3;
+    }
+    cyl(g, 0.035, 0.34, lx, ly + 0.17, lz, C.dark, 8);
+    v.lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.3, 16), basic(0x9BA8B3)); v.lamp.position.set(lx, ly + 0.49, lz); g.add(v.lamp);
+    return v;
+  });
+  const selRing = new THREE.Mesh(new THREE.RingGeometry(2.25, 2.42, 56), new THREE.MeshBasicMaterial({color:C.blue, transparent:true, opacity:0.9}));
+  selRing.rotation.x = -Math.PI / 2; selRing.position.y = 0.03; selRing.visible = false; scene.add(selRing);
+
+  // people
+  const person = (suit, hat) => {
+    const g = new THREE.Group(); g.scale.setScalar(1.15); scene.add(g);
+    const limb = (w, h, x, y, c) => { const pv = new THREE.Group(); pv.position.set(x, y, 0); box(pv, w, h, w + 0.02, 0, -h / 2, 0, c); g.add(pv); return pv; };
+    const legL = limb(0.16, 0.8, -0.11, 0.8, 0x2C3A46), legR = limb(0.16, 0.8, 0.11, 0.8, 0x2C3A46);
+    box(g, 0.44, 0.6, 0.26, 0, 1.1, 0, suit);
+    const armL = limb(0.12, 0.55, -0.29, 1.38, suit), armR = limb(0.12, 0.55, 0.29, 1.38, suit);
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 14, 10), M(0xE2B48C)); head.position.y = 1.57; head.castShadow = true; g.add(head);
+    cyl(g, 0.165, 0.1, 0, 1.7, 0, hat, 14); cyl(g, 0.2, 0.025, 0, 1.655, 0.03, hat, 14);
+    return {g, legL, legR, armL, armR};
+  };
+  const pose = (p, x, z, yaw, mode, ph) => {
+    p.g.position.set(x, 0, z); p.g.rotation.y = yaw;
+    const sw = mode === 'walk' || mode === 'carry' ? Math.sin(ph) * 0.6 : 0;
+    p.legL.rotation.x = sw; p.legR.rotation.x = -sw;
+    if (mode === 'walk') { p.armL.rotation.x = -sw * 0.7; p.armR.rotation.x = sw * 0.7; }
+    else if (mode === 'carry' || mode === 'hold') { p.armL.rotation.x = p.armR.rotation.x = -1.1; }
+    else if (mode === 'work') { p.armL.rotation.x = -1.0 + Math.sin(ph * 0.7) * 0.28; p.armR.rotation.x = -1.0 + Math.cos(ph * 0.9) * 0.28; }
+    else { p.armL.rotation.x = p.armR.rotation.x = 0; }
+  };
+  const ops = { op1:person(C.blue, C.yellow), op3:person(C.blue, C.yellow), op6:person(C.blue, C.yellow), tech:person(0xE8641B, 0xFFFFFF) };
+  const toolbox = box(ops.tech.g, 0.34, 0.2, 0.16, 0.36, 0.72, 0, 0xC2452F);
+
+  // AGVs
+  const agvVis = S.agv.map(() => {
+    const g = new THREE.Group(); scene.add(g);
+    box(g, 1.84, 0.14, 1.24, 0, 0.1, 0, C.dark); box(g, 1.8, 0.3, 1.2, 0, 0.3, 0, 0xF4F6F7);
+    box(g, 0.06, 0.16, 1.22, 0.93, 0.2, 0, C.yellow); box(g, 0.06, 0.16, 1.22, -0.93, 0.2, 0, C.yellow);
+    cyl(g, 0.11, 0.1, 0.72, 0.5, 0, C.dark, 14);
+    const light = box(g, 1.82, 0.05, 1.22, 0, 0.4, 0, basic(0x2B9A5A)); light.castShadow = false;
+    const tray = box(g, 1.3, 0.1, 1.14, -0.1, 0.5, 0, C.wood);
+    return {g, light, tray, yaw:0, init:false};
+  });
+  const trayMat = {tote:M(0x3F6F9F), pallet:M(C.wood)};
+
+  // discs (instanced)
+  const MAXI = 360;
+  const discMat = new THREE.MeshLambertMaterial({color:0xffffff});
+  const rotor = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.29, 0.29, 0.07, 22), discMat, MAXI);
+  const hat = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.15, 0.15, 0.13, 16).translate(0, 0.065, 0), discMat, MAXI);
+  for (const m of [rotor, hat]) { m.castShadow = true; m.receiveShadow = true; m.frustumCulled = false; scene.add(m); }
+  const stageCol = [0x596168, 0xC3CCD2, 0xD3DADF, 0xE9EEF1, 0x86A0B8].map(c => new THREE.Color(c));
+
+  G = {machVis, selRing, ops, pose, toolbox, agvVis, trayMat, rotor, hat, stageCol, shipSpots, MAXI, dummy:new THREE.Object3D(), shipPallets:shipSpots.map(p => { const g = new THREE.Group(); box(g, 1.4, 0.1, 1.4, 0, 0.1, 0, C.wood); g.position.set(p.x, 0, p.z); scene.add(g); return g; })};
+}
+
+const LAMP = {RUN:0x2B9A5A, IDLE:0xA9B5BE, BLOCKED:0xE08E12, DOWN:0xD2452F, OFF:0x55616B};
+let animT = 0, wallT = 0;
+const tableSlot = (t, i) => [t.x - 0.975 + (i % 4) * 0.65, 0.955 + (i >> 3) * 0.14, t.z - 0.35 + ((i >> 2) & 1) * 0.7];
+const quadSlot = (x, z, y0, i, sp = 0.62) => [x + ((i & 1) - 0.5) * sp, y0 + (i >> 2) * 0.14, z + (((i >> 1) & 1) - 0.5) * sp];
+
+function syncScene(rdt) {
+  const g = G; wallT += rdt; if (!paused) animT += rdt;
+  let n = 0;
+  const put = (x, y, z, stage) => {
+    if (n >= g.MAXI) return;
+    g.dummy.position.set(x, y, z); g.dummy.updateMatrix();
+    g.rotor.setMatrixAt(n, g.dummy.matrix); g.hat.setMatrixAt(n, g.dummy.matrix);
+    g.rotor.setColorAt(n, g.stageCol[stage]); g.hat.setColorAt(n, g.stageCol[stage]); n++;
+  };
+  // stock, buffers, conveyors
+  [-11.6, -10, -8.4].forEach(x => { for (let i = 0; i < 12; i++) put(...quadSlot(x, 12.2, 0.185, i), 0); });
+  S.buf.ain.forEach((p, i) => put(...tableSlot(TBL.ain, i), p.stage));
+  S.buf.aout.forEach((p, i) => put(...tableSlot(TBL.aout, i), p.stage));
+  S.buf.bin.forEach((p, i) => put(...tableSlot(TBL.bin, i), p.stage));
+  S.conv.forEach((items, c) => { const d = CONV[c]; for (const it of items) put(d.x0 + (d.x1 - d.x0) * it.pos / d.len, 0.955, d.z, it.part.stage); });
+  S.pallet.forEach((p, i) => put(...quadSlot(PALLET_POS.x, PALLET_POS.z, 0.185, i), p.stage));
+  const shown = S.shippedPallets % 4;
+  g.shipPallets.forEach((pg, k) => { pg.visible = k < shown; if (k < shown) for (let i = 0; i < PALLET_QTY; i++) put(...quadSlot(g.shipSpots[k].x, g.shipSpots[k].z, 0.185, i), 4); });
+
+  // machines
+  S.mach.forEach((m, i) => {
+    const d = MACH[i], v = g.machVis[i], st = m.state;
+    v.lamp.material.color.setHex(st === 'DOWN' && Math.sin(wallT * 9) < 0 ? 0x5A2018 : LAMP[st]);
+    if (d.type === 'lathe' || d.type === 'mill') v.win.material.color.setHex(st === 'RUN' ? 0x9AD3F7 : 0x2B4155);
+    if (d.type === 'oven') v.win.material.color.setHex(st === 'RUN' ? 0xFF8A30 : st === 'OFF' || st === 'DOWN' ? 0x5B4A3C : 0xC8743A);
+    if (d.type === 'insp') v.extra.ring.material.color.setHex(st === 'RUN' ? 0xFFFFFF : 0x9AA6AF);
+    if (d.type === 'wash') v.extra.steam.forEach((s, k) => { const f = (animT * 0.45 + k / 3) % 1; s.position.set(0.9 + f * 0.3, 2.7 + f * 1.3, -0.45); s.scale.setScalar(0.6 + f * 1.3); s.material.opacity = st === 'RUN' ? (1 - f) * 0.55 : 0; });
+    if (m.part && (d.type === 'bal' || d.type === 'insp')) put(d.x, d.type === 'bal' ? 1.01 : 0.94, d.z + (d.type === 'bal' ? 0.1 : 0), m.part.stage);
+    if (d.type === 'robot') {
+      const e = v.extra; let tx = -11.5, ty = 1.75, tz = 5;
+      if (m.part) {
+        const f = m.done ? 1 : Math.min(1, m.prog / m.ctAct), sl = quadSlot(PALLET_POS.x, PALLET_POS.z, 0.185, Math.min(S.pallet.length, PALLET_QTY - 1));
+        tx = -11.5 + (sl[0] + 11.5) * f; tz = 5 + (sl[2] - 5) * f; ty = 0.955 + (sl[1] - 0.955) * f + Math.sin(Math.PI * f) * 1.0 + 0.1;
+      }
+      e.gp.lerp(new THREE.Vector3(tx, ty, tz), 1 - Math.exp(-rdt * 12));
+      e.grip.position.copy(e.gp);
+      const sh = e.boom.position, dir = new THREE.Vector3(e.gp.x - sh.x, e.gp.y + 0.48 - sh.y, e.gp.z - sh.z), len = dir.length();
+      e.boom.scale.x = len; e.boom.quaternion.setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir.normalize());
+      if (m.part) put(e.gp.x, e.gp.y - 0.1, e.gp.z, m.part.stage);
+    }
+  });
+  g.selRing.visible = selected >= 0; if (selected >= 0) g.selRing.position.set(MACH[selected].x, 0.03, MACH[selected].z);
+
+  // people
+  const ph = animT * 9, o = S.op1;
+  const moving = o.state === 'toTable' || o.state === 'toMach' || o.state === 'back';
+  g.pose(g.ops.op1, o.x, o.z, o.yaw, o.carry ? (moving ? 'carry' : 'hold') : moving ? 'walk' : S.mach[0].state === 'RUN' ? 'work' : 'stand', ph);
+  if (o.carry) put(o.x + Math.sin(o.yaw) * 0.42, 1.28, o.z + Math.cos(o.yaw) * 0.42, o.carry.stage);
+  g.pose(g.ops.op3, MACH[2].x - 0.35, MACH[2].z + 1.5, Math.PI, S.mach[2].state === 'RUN' ? 'work' : 'stand', ph + 1);
+  g.pose(g.ops.op6, MACH[5].x + 0.1, MACH[5].z + 1.45, Math.PI, S.mach[5].state === 'RUN' ? 'work' : 'stand', ph + 2);
+  const T = S.tech, tw = T.state === 'walk' || T.state === 'return';
+  g.pose(g.ops.tech, T.x, T.z, T.yaw, tw ? 'walk' : T.state === 'repair' ? 'work' : 'stand', ph);
+  g.toolbox.visible = tw;
+
+  // AGVs
+  S.agv.forEach((a, k) => {
+    const v = g.agvVis[k], p = ringPos(a.s);
+    if (!v.init) { v.yaw = p.yaw; v.init = true; }
+    let dy = p.yaw - v.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy)); v.yaw += dy * (1 - Math.exp(-rdt * 10));
+    v.g.position.set(p.x, 0, p.z); v.g.rotation.y = v.yaw;
+    v.light.material.color.setHex(a.state === 'idle' ? (a.lowBat ? 0xD2452F : 0x2B9A5A) : a.moving ? 0x2F8FE0 : 0xE08E12);
+    v.tray.visible = !!a.kind; if (a.kind) v.tray.material = g.trayMat[a.kind];
+    const c = Math.cos(v.yaw), s = Math.sin(v.yaw);
+    a.load.forEach((part, i) => { const q = quadSlot(-0.1, 0, 0.585, i, 0.6); put(p.x + q[0] * c + q[2] * s, q[1], p.z - q[0] * s + q[2] * c, part.stage); });
+  });
+
+  g.rotor.count = g.hat.count = n;
+  g.rotor.instanceMatrix.needsUpdate = g.hat.instanceMatrix.needsUpdate = true;
+  if (g.rotor.instanceColor) g.rotor.instanceColor.needsUpdate = true;
+  if (g.hat.instanceColor) g.hat.instanceColor.needsUpdate = true;
+}
+
+/* ---------- camera ---------- */
+let vw = 1, vh = 1, fh = 30;
+function placeCam() {
+  const el = $('view'); vw = el.clientWidth || 1; vh = el.clientHeight || 1;
+  renderer.setSize(vw, vh, false);
+  const d = 90, asp = vw / vh; fh = Math.max(26, 46 / asp) / view3d.zoom;
+  cam.position.set(view3d.tx + d * Math.cos(view3d.el) * Math.sin(view3d.az), d * Math.sin(view3d.el), view3d.tz + d * Math.cos(view3d.el) * Math.cos(view3d.az));
+  cam.lookAt(view3d.tx, 0, view3d.tz);
+  cam.left = -fh * asp / 2; cam.right = fh * asp / 2; cam.top = fh / 2; cam.bottom = -fh / 2; cam.updateProjectionMatrix();
+}
+function bindCamera() {
+  const cv = $('gl'); let drag = null;
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+  cv.addEventListener('pointerdown', e => { drag = {x:e.clientX, y:e.clientY, pan:e.button === 2 || e.shiftKey}; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => {
+    if (!drag) return; const dx = e.clientX - drag.x, dy = e.clientY - drag.y; drag.x = e.clientX; drag.y = e.clientY;
+    if (drag.pan) {
+      const k = fh / vh, az = view3d.az, up = dy * k / Math.sin(view3d.el);
+      view3d.tx += -Math.cos(az) * dx * k - Math.sin(az) * up; view3d.tz += Math.sin(az) * dx * k - Math.cos(az) * up;
+      view3d.tx = Math.max(-25, Math.min(20, view3d.tx)); view3d.tz = Math.max(-18, Math.min(18, view3d.tz));
+    } else { view3d.az -= dx * 0.006; view3d.el = Math.max(0.3, Math.min(1.35, view3d.el + dy * 0.004)); }
+    placeCam();
+  });
+  const end = () => { drag = null; }; cv.addEventListener('pointerup', end); cv.addEventListener('pointercancel', end);
+  cv.addEventListener('wheel', e => { e.preventDefault(); view3d.zoom = Math.max(0.6, Math.min(4.5, view3d.zoom * Math.exp(-e.deltaY * 0.0012))); placeCam(); }, {passive:false});
+  $('bView').onclick = () => { Object.assign(view3d, {az:Math.PI / 4, el:Math.atan(1 / Math.SQRT2), zoom:1, tx:-2.5, tz:0}); placeCam(); };
+  new ResizeObserver(placeCam).observe($('view'));
+}
+
+/* ============================================================
+   Overlay chips, station table, detail card
+   ============================================================ */
+const STATE_LABEL = {RUN:'Running', IDLE:'Waiting', BLOCKED:'Blocked', DOWN:'Down', OFF:'Off'};
+const chipEls = MACH.map((d, i) => {
+  const b = document.createElement('button'); b.className = 'chip'; b.innerHTML = `<i class="dot"></i><b>${d.id}</b><span>${d.name}</span>`;
+  b.onclick = () => select(selected === i ? -1 : i); $('chips').appendChild(b); return b;
+});
+const agvChipEls = [0, 1].map(k => { const b = document.createElement('div'); b.className = 'chip agv'; b.innerHTML = `<b>AGV ${k + 1}</b><span></span>`; $('chips').appendChild(b); return b; });
+const rowEls = MACH.map((d, i) => {
+  const r = document.createElement('button'); r.className = 'srow';
+  r.innerHTML = `<span class="nm"><b>${d.id}</b>${d.name}</span><span class="st"><i class="dot"></i><span></span></span><canvas></canvas>` +
+    `<span class="num"></span><span class="num"></span><span class="num"></span><span class="num"></span><span class="crew">${d.crew ? 'Operator' : 'Unattended'}</span>`;
+  r.onclick = () => select(selected === i ? -1 : i); $('srows').appendChild(r);
+  const k = r.children; return {r, st:k[1], stTxt:k[1].lastChild, cv:k[2], oee:k[3], parts:k[4], scrap:k[5], kw:k[6]};
+});
+function select(i) {
+  selected = i;
+  chipEls.forEach((c, k) => c.setAttribute('aria-pressed', k === i)); rowEls.forEach((r, k) => r.r.setAttribute('aria-pressed', k === i));
+  $('detail').hidden = i < 0; if (i >= 0) { $('dName').textContent = `${MACH[i].id} ${MACH[i].name}`; $('dOp').textContent = `${MACH[i].op}. ${MACH[i].crew ? 'Run by an operator.' : 'Runs unattended.'}`; }
+  updateDash();
+}
+$('dClose').onclick = () => select(-1);
+$('dFault').onclick = () => { if (selected >= 0) { fault(S, selected, true); updateDash(); } };
+
+const tmpV = THREE ? new THREE.Vector3() : null;
+function placeChips() {
+  const at = (el, x, y, z) => { tmpV.set(x, y, z).project(cam); el.style.transform = `translate(${((tmpV.x * 0.5 + 0.5) * vw).toFixed(1)}px,${((-tmpV.y * 0.5 + 0.5) * vh).toFixed(1)}px) translate(-50%,-100%)`; };
+  MACH.forEach((d, i) => at(chipEls[i], d.x, d.h + 1.25, d.z));
+  S.agv.forEach((a, k) => { const p = ringPos(a.s); at(agvChipEls[k], p.x, 1.5, p.z); });
+}
+
+/* ============================================================
+   Dashboard
+   ============================================================ */
+const CSS = getComputedStyle(document.documentElement), col = n => CSS.getPropertyValue(n).trim();
+const COL = {ink:col('--ink'), ink2:col('--ink2'), muted:col('--muted'), line:col('--line'), blue:col('--blue'),
+  RUN:col('--run'), IDLE:col('--idle'), BLOCKED:col('--blocked'), DOWN:col('--down'), OFF:col('--off')};
+function prep(cv) {
+  const r = cv.getBoundingClientRect(), d = devicePixelRatio || 1, w = Math.round(r.width * d), h = Math.round(r.height * d);
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const c = cv.getContext('2d'); c.setTransform(d, 0, 0, d, 0, 0); c.clearRect(0, 0, r.width, r.height); return [c, r.width, r.height];
+}
+function nice(v) { const p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
+function lineChart(cv, key, o) {
+  const [c, w, h] = prep(cv); if (w < 10) return;
+  const pL = 30, pR = 8, pT = 8, pB = 17, tMax = Math.max(S.t, 600), tMin = Math.max(0, tMax - 3600);
+  const pts = S.hist.filter(p => p.t >= tMin);
+  const yMax = o.yMax || nice(Math.max(o.ref || 0, 1, ...pts.map(p => p[key])) * 1.12);
+  const X = t => pL + (t - tMin) / (tMax - tMin) * (w - pL - pR), Y = v => h - pB - Math.min(v, yMax) / yMax * (h - pT - pB);
+  c.font = '11px Barlow, Arial, sans-serif'; c.lineWidth = 1; c.textBaseline = 'middle';
+  for (let i = 0; i <= 2; i++) {
+    const v = yMax * i / 2, y = Math.round(Y(v)) + 0.5;
+    c.strokeStyle = i ? '#E9EDF0' : COL.line; c.beginPath(); c.moveTo(pL, y); c.lineTo(w - pR, y); c.stroke();
+    c.fillStyle = COL.muted; c.textAlign = 'right'; c.fillText(String(Math.round(v)), pL - 6, y);
+  }
+  c.textBaseline = 'alphabetic'; c.fillStyle = COL.muted;
+  c.textAlign = 'left'; c.fillText(fmtClock(tMin).slice(0, 5), pL, h - 3); c.textAlign = 'right'; c.fillText(fmtClock(tMax).slice(0, 5), w - pR, h - 3);
+  if (o.ref) {
+    const y = Math.round(Y(o.ref)) + 0.5; c.setLineDash([4, 4]); c.strokeStyle = COL.ink2; c.beginPath(); c.moveTo(pL, y); c.lineTo(w - pR, y); c.stroke(); c.setLineDash([]);
+    c.fillStyle = COL.ink2; c.textAlign = 'right'; const lastV = pts.length ? pts[pts.length - 1][key] : 0; c.fillText(o.refLabel, w - pR - 2, lastV > o.ref ? y + 13 : y - 5);
+  }
+  if (!pts.length) { c.fillStyle = COL.muted; c.textAlign = 'center'; c.fillText('Collecting data', (pL + w - pR) / 2, h / 2); return; }
+  c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(X(p.t), Y(p[key])) : c.moveTo(X(p.t), Y(p[key])));
+  c.strokeStyle = COL.blue; c.lineWidth = 2; c.lineJoin = 'round'; c.stroke();
+  c.lineTo(X(pts[pts.length - 1].t), Y(0)); c.lineTo(X(pts[0].t), Y(0)); c.closePath(); c.fillStyle = 'rgba(29,95,154,.10)'; c.fill();
+  if (cv._hx != null) {
+    let best = pts[0]; for (const p of pts) if (Math.abs(X(p.t) - cv._hx) < Math.abs(X(best.t) - cv._hx)) best = p;
+    const x = X(best.t), y = Y(best[key]);
+    c.strokeStyle = COL.muted; c.lineWidth = 1; c.beginPath(); c.moveTo(Math.round(x) + 0.5, pT); c.lineTo(Math.round(x) + 0.5, h - pB); c.stroke();
+    c.beginPath(); c.arc(x, y, 4.5, 0, 7); c.fillStyle = '#fff'; c.fill(); c.beginPath(); c.arc(x, y, 3, 0, 7); c.fillStyle = COL.blue; c.fill();
+    const txt = `${best[key].toFixed(o.dec ?? 0)} ${o.unit}`, sub = fmtClock(best.t);
+    c.font = '600 12px Barlow, Arial, sans-serif'; const tw = Math.max(c.measureText(txt).width, 46) + 14, bx = Math.max(pL, Math.min(w - pR - tw, x - tw / 2)), by = y > 52 ? y - 46 : y + 10;
+    c.fillStyle = COL.ink; c.beginPath(); c.roundRect(bx, by, tw, 34, 5); c.fill();
+    c.fillStyle = '#fff'; c.textAlign = 'left'; c.fillText(txt, bx + 7, by + 14); c.font = '11px Barlow, Arial, sans-serif'; c.fillStyle = '#B9C5CE'; c.fillText(sub, bx + 7, by + 27);
+  }
+}
+const CHARTS = [[$('cOee'), 'oee', {yMax:100, ref:85, refLabel:'benchmark 85%', unit:'%', dec:1}],
+                [$('cRate'), 'rate', {ref:TARGET_RATE, refLabel:`plan ${TARGET_RATE}/h`, unit:'discs/h'}],
+                [$('cKw'), 'kw', {unit:'kW'}]];
+const drawCharts = () => CHARTS.forEach(a => lineChart(...a));
+CHARTS.forEach(([cv]) => { cv.addEventListener('mousemove', e => { cv._hx = e.offsetX; drawCharts(); }); cv.addEventListener('mouseleave', () => { cv._hx = null; drawCharts(); }); });
+
+function timeline(cv, m) {
+  const [c, w, h] = prep(cv); if (w < 10) return;
+  const span = 1800, t0 = S.t - span, X = t => (t - t0) / span * w;
+  c.fillStyle = '#EEF1F3'; c.fillRect(0, 0, w, h);
+  for (let k = 0; k < m.segs.length; k++) {
+    const a = m.segs[k], end = k + 1 < m.segs.length ? m.segs[k + 1].t : S.t; if (end < t0) continue;
+    const x0 = Math.max(0, X(a.t)), x1 = X(end); c.fillStyle = COL[a.s]; c.fillRect(x0, 0, Math.max(0.6, x1 - x0), h);
+  }
+}
+const pct = v => (v * 100).toFixed(1);
+const setBar = (el, v) => { el.style.width = Math.max(0, Math.min(100, v * 100)).toFixed(1) + '%'; };
+function barsHtml(rows, max, fmt) {
+  return rows.map(r => `<div class="r"><span>${r.label}</span><div class="trk"><i style="width:${max > 0 ? (r.v / max * 100).toFixed(1) : 0}%"></i></div><span class="v">${fmt(r)}</span></div>`).join('');
+}
+const AGV_STATE = {idle:'Idle, charging', toPick:'Driving to pick-up', loading:'Loading', toDrop:'Delivering', unloading:'Unloading'};
+const TASK_NAME = {raw:'raw castings', wip:'machined discs', fg:'finished pallet'};
+
+function updateDash() {
+  const k = lineKpi(S), mode = paused ? 'paused' : S.mode;
+  $('clock').textContent = fmtClock(S.t); $('elapsed').textContent = `${fmtHms(S.t)} into shift`;
+  const st = $('status'); st.dataset.m = mode;
+  st.lastElementChild.textContent = paused ? 'Paused' : S.mode === 'running' ? 'Running' : S.mode === 'stopping' ? 'Stopping, finishing cycles' : S.t === 0 ? 'Ready to start' : 'Stopped';
+  $('bStart').disabled = !paused && S.mode === 'running'; $('bPause').disabled = paused || S.mode === 'stopped'; $('bStop').disabled = S.mode !== 'running';
+
+  $('kOee').textContent = pct(k.oee);
+  const gap = k.oee * 100 - 85; $('kOeeNote').textContent = S.plannedT < 60 ? 'Benchmark 85%' : `${Math.abs(gap).toFixed(1)} pts ${gap >= 0 ? 'above' : 'below'} the 85% benchmark`;
+  setBar($('mA'), k.A); setBar($('mP'), k.P); setBar($('mQ'), k.Q);
+  $('vA').textContent = pct(k.A) + '%'; $('vP').textContent = pct(k.P) + '%'; $('vQ').textContent = pct(k.Q) + '%';
+
+  const planned = TARGET_RATE * S.plannedT / 3600;
+  $('kGood').textContent = S.good; $('kScrap').textContent = S.scrap; $('kFpy').textContent = pct(k.Q);
+  $('kRate').textContent = Math.round(rateNow(S)); $('kPal').textContent = S.shippedPallets; $('kWip').textContent = wipCount(S);
+  $('kPlan').textContent = `${S.good} of ${Math.round(planned)} planned`; setBar($('mPlan'), planned > 0.5 ? S.good / planned : 0);
+
+  $('kKw').textContent = Math.round(S.kw); $('kKwh').textContent = S.kwh.toFixed(1);
+  $('kKpp').textContent = S.good ? (S.kwh / S.good).toFixed(2) : '0.00'; $('kPeak').textContent = `peak ${Math.round(S.peakKw)} kW`;
+  const en = MACH.map((d, i) => ({label:`${d.id} ${d.name}`, v:S.mach[i].kwh}));
+  en.push({label:'Lighting and air', v:S.auxKwh}, {label:'AGV charging', v:S.agvKwh}); en.sort((a, b) => b.v - a.v);
+  $('eBars').innerHTML = barsHtml(en, en[0].v, r => r.v.toFixed(1));
+  const dn = MACH.map((d, i) => ({label:`${d.id} ${d.name}`, v:S.mach[i].ts.DOWN, n:S.mach[i].stops})).sort((a, b) => b.v - a.v);
+  $('dBars').innerHTML = dn[0].v > 0 ? barsHtml(dn.filter(r => r.n), dn[0].v, r => `${(r.v / 60).toFixed(1)} min, ${r.n} stop${r.n > 1 ? 's' : ''}`)
+    : '<p class="note" style="margin:0">No stops yet this shift.</p>';
+
+  $('agvRows').innerHTML = S.agv.map(a => `<div class="agvr"><b>AGV ${a.id}</b><span class="s">${a.lowBat ? 'Charging, battery low' : AGV_STATE[a.state]}${a.task ? ': ' + TASK_NAME[a.task.type] : ''}</span>` +
+    `<div class="bat" title="Battery"><i class="${a.battery < 25 ? 'low' : ''}" style="width:${a.battery.toFixed(0)}%"></i></div><span class="num">${a.battery.toFixed(0)}%, ${a.trips} trips</span></div>`).join('');
+
+  S.mach.forEach((m, i) => {
+    const r = rowEls[i], q = machKpi(S, i);
+    r.st.className = 'st ' + m.state; r.stTxt.textContent = STATE_LABEL[m.state];
+    r.oee.textContent = q.planned > 30 ? pct(q.oee) + '%' : '-'; r.parts.textContent = m.count; r.scrap.textContent = m.scrap; r.kw.textContent = m.kw.toFixed(1);
+    timeline(r.cv, m); chipEls[i].className = 'chip ' + m.state;
+  });
+  S.agv.forEach((a, i) => { agvChipEls[i].lastChild.textContent = `${a.battery.toFixed(0)}%`; });
+
+  if (selected >= 0) {
+    const d = MACH[selected], m = S.mach[selected], q = machKpi(S, selected);
+    const ds = $('dState'); ds.className = 'state ' + m.state;
+    ds.lastElementChild.textContent = m.state === 'DOWN' ? `Down: ${m.reason}${m.techHere ? ', repair in progress' : ', waiting for technician'}`
+      : m.state === 'IDLE' ? 'Waiting for parts' : m.state === 'BLOCKED' ? 'Blocked, outfeed is full' : STATE_LABEL[m.state];
+    const rows = [['OEE', pct(q.oee) + '%'], ['Availability', pct(q.A) + '%'], ['Performance', pct(q.P) + '%'], ['Quality', pct(q.Q) + '%'],
+      ['Parts made', m.count], ['Scrap caused', m.scrap], ['Last cycle', m.lastCt ? m.lastCt.toFixed(1) + ' s' : '-'], ['Ideal cycle', d.ct + ' s'],
+      ['Power now', m.kw.toFixed(1) + ' kW'], ['Energy used', m.kwh.toFixed(1) + ' kWh'], ['Energy per part', m.count ? (m.kwh / m.count).toFixed(2) + ' kWh' : '-'], ['Stops', m.stops],
+      ['Downtime', fmtDur(m.ts.DOWN)], ['Mean time to repair', m.stops ? fmtDur(m.ts.DOWN / m.stops) : '-'], ['Running time', fmtDur(m.ts.RUN)], ['Time between failures', m.stops ? fmtDur(m.ts.RUN / m.stops) : '-']];
+    $('dGrid').innerHTML = rows.map(([a, b]) => `<div><dt>${a}</dt><dd>${b}</dd></div>`).join('');
+    $('dFault').disabled = m.down;
+  }
+  if (S.logDirty) {
+    S.logDirty = false;
+    $('log').innerHTML = S.log.length ? S.log.map(e => `<li><time>${fmtClock(e.t)}</time><span class="${e.bad ? 'bad' : ''}">${e.msg}</span></li>`).join('')
+      : '<li><span class="empty">Nothing has happened yet. Press Start to run the line.</span></li>';
+  }
+  drawCharts();
+}
+
+/* ============================================================
+   Controls
+   ============================================================ */
+$('bStart').onclick = () => {
+  if (paused) { paused = false; if (S.mode !== 'stopped') { updateDash(); return; } }
+  if (S.mode !== 'running') { logEv(S, S.t === 0 ? 'Shift started, line running' : 'Line started'); S.mode = 'running'; }
+  updateDash();
+};
+$('bPause').onclick = () => { paused = true; updateDash(); };
+$('bStop').onclick = () => { paused = false; if (S.mode === 'running') { S.mode = 'stopping'; logEv(S, 'Stop requested, stations finishing their cycle'); } updateDash(); };
+$('bReset').onclick = () => { S = newSim(); S.mode = 'stopped'; paused = false; if (G) G.agvVis.forEach(v => v.init = false); updateDash(); };
+const speedBtns = [...$('speed').children];
+const setSpeed = v => { speed = v; speedBtns.forEach(b => b.setAttribute('aria-pressed', +b.dataset.s === v)); };
+speedBtns.forEach(b => b.onclick = () => setSpeed(+b.dataset.s)); setSpeed(10);
+addEventListener('keydown', e => {
+  if (e.code !== 'Space' || /^(BUTTON|INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+  e.preventDefault(); if (paused) $('bStart').click(); else if (S.mode !== 'stopped') $('bPause').click();
+});
+
+/* ============================================================
+   Main loop
+   ============================================================ */
+if (THREE) { buildScene(); bindCamera(); placeCam(); }
+let last = performance.now(), dashT = 0;
+function frame(now) {
+  const rdt = Math.min(0.1, (now - last) / 1000); last = now;
+  if (!paused) { let left = rdt * speed; while (left > 1e-9) { const dt = Math.min(0.2, left); step(S, dt); left -= dt; } }
+  if (THREE) { syncScene(rdt); renderer.render(scene, cam); placeChips(); }
+  dashT += rdt; if (dashT > 0.25) { dashT = 0; updateDash(); }
+  requestAnimationFrame(frame);
+}
+updateDash();
+requestAnimationFrame(frame);
+window.__factory = { get S() { return S; }, step, lineKpi, machKpi };
+</script>
+</body>
+</html>
