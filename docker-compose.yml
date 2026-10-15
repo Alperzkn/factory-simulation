@@ -1,0 +1,32 @@
+# Kestrel digital twin viewer for Siemens Industrial Edge.
+# Import this file in the Industrial Edge App Publisher. Industrial Edge requires compose format 2.4 and a memory limit.
+#
+# The simulation itself runs in Flow Creator (import edge/kestrel-twin-flow.json there). This container only shows
+# what the flow publishes on the Databus and sends commands back to it.
+version: '2.4'
+services:
+  kestrel-twin:
+    image: kestrel-twin:2.0.0
+    build: .
+    restart: unless-stopped
+    mem_limit: 384m
+    environment:
+      - SOURCE=databus
+      - DATABUS_URL=mqtt://ie-databus:1883
+      - DATABUS_USER=edge             # a Databus user allowed to read and write ie/d/j/simatic/v1/kestreltwin1/#
+      - DATABUS_PASSWORD=edge         # change both to the credentials you created in the Databus configuration
+      - DATABUS_CONNECTOR=kestreltwin1
+      - DATABUS_CONNECTION=factory
+    ports:
+      - '8080:8080'                   # 3D viewer, documentation and REST API
+    networks:
+      - proxy-redirect                # the Industrial Edge network on which ie-databus is reachable
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '2'
+networks:
+  proxy-redirect:
+    external: true
+    name: proxy-redirect

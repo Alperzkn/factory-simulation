@@ -3,7 +3,7 @@ import { Router } from 'express';
 import { MACH } from '../shared/plant.js';
 import {
   pubStatus, pubKpis, pubEnergy, pubMachine, pubMachineTags, pubTimeline, pubAgv, pubWarehouse, pubBuffers, pubPeople,
-  pubEvents, pubHistory, pubMachineHistory, pubState,
+  pubEvents, pubHistory, pubMachineHistory, pubState, pubAnomaly,
 } from '../shared/engine.js';
 
 export function apiRouter({world, command, services, cfg}) {
@@ -32,6 +32,9 @@ export function apiRouter({world, command, services, cfg}) {
   api.get('/kpis', (req, res) => res.json(pubKpis(world)));
   api.get('/energy', (req, res) => res.json(pubEnergy(world)));
   api.get('/connectivity', (req, res) => res.json(services));
+  api.get('/anomaly', (req, res) => res.json(pubAnomaly(world)));
+  api.post('/anomalies', (req, res) => reply(res, command({action:'anomaly', type:req.body && req.body.type, durationS:req.body && req.body.durationS, severity:req.body && req.body.severity}, 'rest')));
+  api.post('/anomalies/clear', (req, res) => reply(res, command({action:'clearAnomaly'}, 'rest')));
 
   api.get('/machines', (req, res) => res.json(MACH.map((_, i) => pubMachine(world, i))));
   api.get('/machines/:id', (req, res) => { const i = machine(req, res); if (i >= 0) res.json(pubMachine(world, i)); });
@@ -77,6 +80,30 @@ export function apiRouter({world, command, services, cfg}) {
     req.on('close', () => clearInterval(timer));
   });
 
+  api.use((req, res) => res.status(404).json({error:'not found', see:'/api/v1'}));
+  return api;
+}
+
+// REST API in databus mode: read-only views of the data received from the Databus, and commands sent back as Control_0 writes
+export function apiDatabusRouter({source, command, services}) {
+  const api = Router();
+  api.use((req, res, next) => { res.set({'Access-Control-Allow-Origin':'*', 'Access-Control-Allow-Methods':'GET,POST,PUT,OPTIONS', 'Access-Control-Allow-Headers':'Content-Type', 'Cache-Control':'no-store'}); if (req.method === 'OPTIONS') return res.sendStatus(204); next(); });
+  const stats = res => { const s = source() && source().stats(); if (!s) res.status(503).json({error:'no data received from the Databus yet', databus:services.databus}); return s; };
+  const machine = (req, res, s) => { const i = MACH.findIndex(m => m.id === req.params.id.toUpperCase()); if (i < 0) res.status(404).json({error:`unknown machine '${req.params.id}'`}); return i; };
+  const send = (res, r) => res.status(r.ok ? 202 : 400).json(r);
+  api.get('/', (req, res) => res.json({name:'Kestrel digital twin API', mode:'databus', docs:'/docs/#/industrial-edge', endpoints:['GET /status', 'GET /kpis', 'GET /machines', 'GET /machines/{id}', 'GET /machines/{id}/history', 'GET /agvs', 'GET /warehouse', 'GET /events', 'GET /anomaly', 'GET /tags', 'GET /connectivity', 'POST /control/{start|pause|resume|stop|reset}', 'PUT /control/speed', 'POST /machines/{id}/fault', 'POST /warehouse/trucks/{inbound|outbound}', 'POST /anomalies', 'POST /anomalies/clear']}));
+  api.get('/connectivity', (req, res) => res.json(services));
+  api.get('/tags', (req, res) => res.json(source().tags()));
+  for (const [route, key] of [['status', 'status'], ['kpis', 'kpis'], ['machines', 'machines'], ['agvs', 'agvs'], ['warehouse', 'warehouse'], ['events', 'events'], ['anomaly', 'anomaly'], ['material', 'material'], ['people', 'people']])
+    api.get(`/${route}`, (req, res) => { const s = stats(res); if (s) res.json(key === 'machines' ? s.machines.map(({segs, ...m}) => m) : s[key]); });
+  api.get('/machines/:id', (req, res) => { const s = stats(res); if (!s) return; const i = machine(req, res); if (i >= 0) { const {segs, ...m} = s.machines[i]; res.json(m); } });
+  api.get('/machines/:id/history', (req, res) => { const i = machine(req, res); if (i >= 0) res.json({id:MACH[i].id, sampleIntervalS:10, samples:source().machineHistory(i)}); });
+  for (const action of ['start', 'pause', 'resume', 'stop', 'reset']) api.post(`/control/${action}`, (req, res) => send(res, command({action}, 'rest')));
+  for (const m of ['put', 'post']) api[m]('/control/speed', (req, res) => send(res, command({action:'speed', speed:req.body && req.body.speed}, 'rest')));
+  api.post('/machines/:id/fault', (req, res) => { const i = machine(req, res); if (i >= 0) send(res, command({action:'fault', machine:MACH[i].id}, 'rest')); });
+  api.post('/warehouse/trucks/:direction', (req, res) => send(res, command({action:'truck', direction:req.params.direction}, 'rest')));
+  api.post('/anomalies', (req, res) => send(res, command({action:'anomaly', type:req.body && req.body.type}, 'rest')));
+  api.post('/anomalies/clear', (req, res) => send(res, command({action:'clearAnomaly'}, 'rest')));
   api.use((req, res) => res.status(404).json({error:'not found', see:'/api/v1'}));
   return api;
 }

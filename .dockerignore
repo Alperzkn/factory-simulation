@@ -1,0 +1,8 @@
+node_modules
+dist
+video
+archive
+example_files
+edge
+.git
+.vercel

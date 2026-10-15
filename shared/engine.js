@@ -3,14 +3,16 @@
 import {
   PLANT, SHIFT_START, IDEAL_CT, TARGET_RATE, SPACING, CONV_V, PALLET_QTY, RAW_PALLET_QTY, TOTE_RAW, TOTE_WIP, BUFFER_CAP,
   MACH, REASONS, CONV, SRC, SNK, STG, STAGE_NAME, TBL, RING_L, ST, STOP_NAME, ringPos, fwd, AGV_V, AGV_GAP, AGV_HANDLING,
-  OP1, TECH_HOME, WALK_V, servicePt, WH, SLOTS, STATE_CODE, STATE_LABEL,
+  OP1, TECH_HOME, WALK_V, servicePt, WH, SLOTS, STATE_CODE, STATE_LABEL, ANOMALIES, ANOMALY_TIMING,
 } from './plant.js';
 
 const SPEED_MIN = 0.1, SPEED_MAX = 120;
 const HIST_EVERY = 20, MACH_HIST_EVERY = 10;
 
-function rng32(a) { return function () { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
-const gauss = S => (S.rng() + S.rng() + S.rng() - 1.5) * 2;
+// The whole simulation state is plain data (no functions), so it can be stored in Flow Creator context or sent as JSON.
+// The random generator keeps its state in S.seed.
+function rnd(S) { const a = S.seed = (S.seed + 0x6D2B79F5) | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }
+const gauss = S => (rnd(S) + rnd(S) + rnd(S) - 1.5) * 2;
 const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
 const r = (v, d = 1) => { const f = 10 ** d; return Math.round(v * f) / f; };
 const pad = n => String(n).padStart(2, '0');
@@ -28,7 +30,7 @@ export function createWorld() {
 
 export function createSim(runNo = 0) {
   const S = {
-    t:0, mode:'running', rng:rng32(20261006 + 977 * runNo), nid:1, eid:1,
+    t:0, mode:'running', seed:20261006 + 977 * runNo, nid:1, eid:1,
     buf:{ain:[], aout:[], bin:[]}, pallet:[], conv:CONV.map(() => []),
     mach:MACH.map(d => ({part:null, prog:0, ctAct:0, done:false, down:false, techHere:false, repairLeft:0, downAt:0, reason:'',
       state:'IDLE', since:0, ts:{RUN:0, IDLE:0, BLOCKED:0, DOWN:0, OFF:0}, count:0, scrap:0, kwh:0, kw:0, stops:0, lastCt:0, segs:[], tags:{}, hist:[]})),
@@ -46,7 +48,7 @@ export function createSim(runNo = 0) {
   for (let i = 0; i < 2; i++) S.buf.bin.push(mk(2));
   [[1, 1], [1, 2], [1, 2], [1, 2], [1, 3], [1, 4], [0, 4]].forEach(([n, stage], c) => { for (let k = 0; k < n; k++) S.conv[c].push({part:mk(stage), pos:CONV[c].len - k * SPACING}); });
   for (let i = 0; i < 3; i++) S.pallet.push(mk(4));
-  MACH.forEach((d, i) => { for (const tg of d.tags) S.mach[i].tags[tg.k] = tg.perPart ? tg.mean : tg.wear ? 55 + S.rng() * 40 : tg.idle; });
+  MACH.forEach((d, i) => { for (const tg of d.tags) S.mach[i].tags[tg.k] = tg.perPart ? tg.mean : tg.wear ? 55 + rnd(S) * 40 : tg.idle; });
 
   // warehouse
   const W = S.wh = {
@@ -57,24 +59,58 @@ export function createSim(runNo = 0) {
     outbound:{state:'none', pos:0, eta:0, loaded:[], need:WH.shipQty, no:0, dockedAt:0},
     stats:{receivedPallets:0, receivedDiscs:0, shippedPallets:0, shippedDiscs:0, trucksIn:0, trucksOut:0, d2sSum:0, d2sN:0, stockoutT:0, putaways:0, replenishments:0},
   };
-  const pal = (type, qty, t = 0) => ({id:`${type === 'raw' ? 'RP' : 'FP'}-${String(W.pid++).padStart(4, '0')}`, type, qty, t});
-  S.newPallet = pal;
+  const pal = (type, qty, t = 0) => newPallet(S, type, qty, t);
   let n = 0; SLOTS.forEach((s, i) => { if (s.zone === 'raw' && n < 9 && s.level < 2) { W.slots[i].pallet = pal('raw', RAW_PALLET_QTY); n++; } });
   n = 0; SLOTS.forEach((s, i) => { if (s.zone === 'fg' && n < 4 && s.level === 0) { W.slots[i].pallet = pal('fg', PALLET_QTY); n++; } });
   W.rawStand = [pal('raw', RAW_PALLET_QTY), pal('raw', RAW_PALLET_QTY)];
+  S.anom = {active:null, count:0, integratedS:0, nextAt:nextAnomalyGap(S), last:null};
   return S;
 }
+
+function newPallet(S, type, qty, t = 0) { return {id:`${type === 'raw' ? 'RP' : 'FP'}-${String(S.wh.pid++).padStart(4, '0')}`, type, qty, t}; }
 
 export function ev(S, kind, src, msg) {
   S.log.unshift({id:S.eid++, t:S.t, kind, src, msg});
   if (S.log.length > 200) S.log.pop();
 }
 
+/* ============================================================ injected anomalies */
+function nextAnomalyGap(S) { const g = ANOMALY_TIMING; return Math.max(g.minIntervalS, -Math.log(1 - rnd(S)) * g.meanIntervalS); }
+export function startAnomaly(S, type, opts = {}) {
+  if (S.anom.active) return {ok:false, error:'an anomaly is already active'};
+  const def = type && type !== 'random' ? ANOMALIES.find(a => a.type === type) : ANOMALIES[Math.floor(rnd(S) * ANOMALIES.length)];
+  if (!def) return {ok:false, error:`unknown anomaly type, use one of: random, ${ANOMALIES.map(a => a.type).join(', ')}`};
+  const g = ANOMALY_TIMING, dur = Number(opts.durationS) > 0 ? Math.min(3600, Number(opts.durationS)) : g.minDurationS + rnd(S) * (g.maxDurationS - g.minDurationS);
+  const sev = Number(opts.severity) > 0 ? Math.min(1, Number(opts.severity)) : 0.45 + rnd(S) * 0.55;
+  S.anom.count++;
+  S.anom.active = {id:`ANOM-${String(S.anom.count).padStart(4, '0')}`, type:def.type, station:def.station, severity:r(sev, 2), startT:S.t, endT:S.t + dur, manual:!!opts.manual};
+  ev(S, 'anomaly', def.station, `Anomaly ${S.anom.active.id} injected: ${def.name.toLowerCase()} on ${def.station === 'PLANT' ? 'the air system' : def.station}, severity ${Math.round(sev * 100)}%`);
+  return {ok:true, id:S.anom.active.id};
+}
+export function endAnomaly(S) {
+  const a = S.anom.active; if (!a) return {ok:false, error:'no anomaly is active'};
+  S.anom.last = {...a, endT:S.t}; S.anom.active = null; S.anom.nextAt = S.t + nextAnomalyGap(S);
+  ev(S, 'anomaly', a.station, `Anomaly ${a.id} ended after ${fmtDur(S.t - a.startT)}`);
+  return {ok:true};
+}
+// current strength of the active anomaly for a station id (or 'PLANT'): ramps in over the first fifth of the window
+function anomalyLevel(S, station) {
+  const a = S.anom.active; if (!a || a.station !== station) return 0;
+  return a.severity * Math.min(1, (S.t - a.startT) / Math.max(1, 0.2 * (a.endT - a.startT)));
+}
+const anomalyDef = S => (S.anom.active ? ANOMALIES.find(d => d.type === S.anom.active.type) : null);
+function stepAnomaly(S, dt) {
+  const A = S.anom;
+  if (A.active) { A.integratedS += dt; if (S.t >= A.active.endT) endAnomaly(S); }
+  else if (S.t >= A.nextAt) { if (S.mode === 'running') startAnomaly(S, 'random'); else A.nextAt = S.t + 60; }
+}
+
 /* ============================================================ line */
 function startPart(S, i, p) {
   const d = MACH[i], m = S.mach[i];
-  m.part = p; m.prog = 0; m.done = false; m.ctAct = d.ct * (1 + S.rng() * 0.12);
-  if (p.bad == null && S.rng() < d.defect) p.bad = i;
+  const x = anomalyLevel(S, d.id), ad = x ? anomalyDef(S) : null;
+  m.part = p; m.prog = 0; m.done = false; m.ctAct = d.ct * (1 + rnd(S) * 0.12) * (1 + (ad && ad.ct ? ad.ct * x : 0));
+  if (p.bad == null && rnd(S) < d.defect + (ad && ad.defect ? ad.defect * x : 0)) p.bad = i;
 }
 function scrapPart(S, p, at) {
   S.scrap++; S.mach[p.bad].scrap++;
@@ -84,8 +120,8 @@ function cycleDone(S, i, p) {
   const d = MACH[i], m = S.mach[i];
   m.count++; m.lastCt = m.ctAct;
   for (const tg of d.tags) {
-    if (tg.perPart) m.tags[tg.k] = Math.max(0, tg.mean + gauss(S) * tg.sd + (p.bad != null && (i === 5 || i === 2 || p.bad === i) ? 3.4 * tg.sd : 0));
-    else if (tg.wear) { m.tags[tg.k] -= tg.drop * (0.7 + S.rng() * 0.6); if (m.tags[tg.k] <= 3) { m.tags[tg.k] = 100; ev(S, 'info', d.id, `${d.id} ${d.name}: tool changed automatically`); } }
+    if (tg.perPart) { const x = anomalyLevel(S, d.id), ad = x ? anomalyDef(S) : null; m.tags[tg.k] = Math.max(0, tg.mean + gauss(S) * tg.sd + (p.bad != null && (i === 5 || i === 2 || p.bad === i) ? 3.4 * tg.sd : 0) + (ad && ad.part && ad.part[tg.k] ? ad.part[tg.k] * x : 0)); }
+    else if (tg.wear) { m.tags[tg.k] -= tg.drop * (0.7 + rnd(S) * 0.6); if (m.tags[tg.k] <= 3) { m.tags[tg.k] = 100; ev(S, 'info', d.id, `${d.id} ${d.name}: tool changed automatically`); } }
   }
 }
 // try to move the finished part out of station i; false means blocked
@@ -97,7 +133,7 @@ function finish(S, i) {
     if (S.pallet.length === PALLET_QTY) S.palletsDone++;
     return true;
   }
-  if (i === 2 && p.bad != null && !p.checked) { p.checked = true; if (S.rng() < 0.55) { scrapPart(S, p, i); return true; } }
+  if (i === 2 && p.bad != null && !p.checked) { p.checked = true; if (rnd(S) < 0.55) { scrapPart(S, p, i); return true; } }
   if (i === 5 && p.bad != null) { scrapPart(S, p, i); return true; }
   const c = S.conv[SNK[i]];
   if (c.length && c[c.length - 1].pos < SPACING) return false;
@@ -107,8 +143,8 @@ export function fault(S, i, manual) {
   const d = MACH[i], m = S.mach[i];
   if (m.down) return false;
   m.down = true; m.techHere = false; m.stops++; m.downAt = S.t;
-  m.repairLeft = d.mttr * (0.6 + S.rng() * 0.8);
-  const rs = REASONS[d.type]; m.reason = manual ? 'fault triggered manually' : rs[Math.floor(S.rng() * rs.length)];
+  m.repairLeft = d.mttr * (0.6 + rnd(S) * 0.8);
+  const rs = REASONS[d.type]; m.reason = manual ? 'fault triggered manually' : rs[Math.floor(rnd(S) * rs.length)];
   S.tech.queue.push(i);
   ev(S, 'alarm', d.id, `${d.id} ${d.name} down: ${m.reason}`);
   return true;
@@ -126,7 +162,7 @@ function stepMachine(S, i, dt, run, live) {
   } else if (live) {
     if (m.part && !m.done) {
       m.prog += dt; st = 'RUN';
-      if (S.rng() < dt / d.mtbf) { fault(S, i); st = 'DOWN'; }
+      if (rnd(S) < dt / d.mtbf) { fault(S, i); st = 'DOWN'; }
       else if (m.prog >= m.ctAct) m.done = true;
     }
     if (!m.down && m.part && m.done) {
@@ -141,14 +177,17 @@ function stepMachine(S, i, dt, run, live) {
     if (!st) st = run ? 'IDLE' : 'OFF';
   } else st = 'OFF';
 
-  m.kw = st === 'RUN' ? d.kwRun * (0.72 + 0.4 * Math.sin(Math.PI * Math.min(1, m.prog / (m.ctAct || 1))))
+  const ax = anomalyLevel(S, d.id), ad = ax ? anomalyDef(S) : null;
+  m.kw = st === 'RUN' ? d.kwRun * (0.72 + 0.4 * Math.sin(Math.PI * Math.min(1, m.prog / (m.ctAct || 1)))) * (1 + (ad && ad.kw ? ad.kw * ax : 0))
        : st === 'IDLE' || st === 'BLOCKED' ? d.kwIdle : st === 'DOWN' ? d.kwIdle * 0.6 : d.kwIdle * 0.25;
   m.kwh += m.kw * dt / 3600; m.ts[st] += dt;
   if (m.state !== st || !m.segs.length) { m.segs.push({s:st, t:S.t - dt}); if (m.segs.length > 600) m.segs.shift(); m.since = S.t - dt; }
   m.state = st;
   for (const tg of d.tags) {
     if (tg.perPart || tg.wear) continue;
-    const target = st === 'RUN' ? tg.run : st === 'IDLE' || st === 'BLOCKED' ? tg.idle : st === 'DOWN' ? (tg.idle + tg.off) / 2 : tg.off;
+    let target = st === 'RUN' ? tg.run : st === 'IDLE' || st === 'BLOCKED' ? tg.idle : st === 'DOWN' ? (tg.idle + tg.off) / 2 : tg.off;
+    const fx = ad && ad.tags && ad.tags[tg.k];
+    if (fx && st !== 'OFF' && (fx[1] !== 'run' || st === 'RUN')) target += fx[0] * ax;
     m.tags[tg.k] += (target - m.tags[tg.k]) * (1 - Math.exp(-dt / tg.tau));
   }
 }
@@ -234,7 +273,7 @@ function stepAgv(S, a, dt) {
         else if (ty === 'wip') S.buf.bin.push(...a.load);
         else {
           const k = S.wh.fgStand.findIndex(p => !p); if (k < 0) break;   // wait for the forklift to clear the stand
-          const p = S.newPallet('fg', a.load.length, S.t); S.wh.fgStand[k] = p;
+          const p = newPallet(S, 'fg', a.load.length, S.t); S.wh.fgStand[k] = p;
           ev(S, 'logistics', `AGV-${a.id}`, `Pallet ${p.id} handed to the warehouse by AGV ${a.id}`);
         }
         S.pend[ty] = false; a.load = []; a.kind = null; a.task = null; a.trips++; a.state = 'idle';
@@ -376,13 +415,13 @@ export function callTruck(S, which) {
 function stepTrucks(S, dt) {
   const W = S.wh, c = whCounts(S), f = W.fork;
   const I = W.inbound, O = W.outbound;
-  if (I.state === 'none' && c.rawPallets <= WH.reorderPoint) { I.state = 'due'; I.eta = S.t + 420 + S.rng() * 360; ev(S, 'logistics', 'warehouse', `Raw stock at ${c.rawPallets} pallets, replenishment truck ordered`); }
-  if (O.state === 'none' && c.fgRack >= WH.shipTrigger) { O.state = 'due'; O.eta = S.t + 300 + S.rng() * 300; ev(S, 'logistics', 'warehouse', `${c.fgRack} finished pallets in stock, collection booked`); }
+  if (I.state === 'none' && c.rawPallets <= WH.reorderPoint) { I.state = 'due'; I.eta = S.t + 420 + rnd(S) * 360; ev(S, 'logistics', 'warehouse', `Raw stock at ${c.rawPallets} pallets, replenishment truck ordered`); }
+  if (O.state === 'none' && c.fgRack >= WH.shipTrigger) { O.state = 'due'; O.eta = S.t + 300 + rnd(S) * 300; ev(S, 'logistics', 'warehouse', `${c.fgRack} finished pallets in stock, collection booked`); }
   for (const T of [I, O]) {
     const inb = T === I;
     if (T.state === 'due' && S.t >= T.eta) {
       T.state = 'arriving'; T.pos = 0; T.no++;
-      if (inb) T.pallets = Array.from({length:WH.truckQty}, () => S.newPallet('raw', RAW_PALLET_QTY));
+      if (inb) T.pallets = Array.from({length:WH.truckQty}, () => newPallet(S, 'raw', RAW_PALLET_QTY));
     } else if (T.state === 'arriving') {
       T.pos = Math.min(1, T.pos + dt / WH.truckTravel);
       if (T.pos >= 1) {
@@ -429,19 +468,21 @@ export function step(S, dt) {
   for (const a of S.agv) stepAgv(S, a, dt);
   stepFork(S, dt);
   stepTrucks(S, dt);
+  stepAnomaly(S, dt);
 
   if (S.mode === 'stopping' && S.mach.every(m => m.down || !m.part || m.done) && S.agv.every(a => a.state === 'idle' || ((a.state === 'loading' || a.state === 'unloading') && a.timer <= 0))
       && (S.op1.state === 'idle' || S.op1.state === 'hold')) { S.mode = 'stopped'; ev(S, 'info', 'line', 'Line stopped, stations on standby'); }
 
   // energy and line accounting
   let kw = 0; for (const m of S.mach) kw += m.kw;
-  const aux = live ? 14 : 5; let agvKw = 0;
+  const px = anomalyLevel(S, 'PLANT'), pd = px ? anomalyDef(S) : null;
+  const aux = (live ? 14 : 5) + (pd && pd.auxKw ? pd.auxKw * px : 0); let agvKw = 0;
   for (const a of S.agv) if (a.state === 'idle' && !a.moving && a.battery < 100) agvKw += 0.9;
   const f = S.wh.fork, whKw = 3.5 + (f.state === 'idle' ? 1.2 : 0);          // warehouse lighting, dock doors, forklift charger
   kw += aux + agvKw + whKw;
   S.kw = kw; S.kwh += kw * dt / 3600; S.auxKwh += aux * dt / 3600; S.agvKwh += agvKw * dt / 3600; S.whKwh += whKw * dt / 3600;
   if (kw > S.peakKw) S.peakKw = kw;
-  S.airPressure += ((live ? 6.4 : 6.9) - S.airPressure) * (1 - Math.exp(-dt / 30));
+  S.airPressure += ((live ? 6.4 : 6.9) + (pd && pd.air ? pd.air * px : 0) - S.airPressure) * (1 - Math.exp(-dt / 30));
   if (live) S.plannedT += dt;
   S.kwAcc += kw * dt; S.accT += dt;
   if (S.t >= S.nextSample) {
@@ -491,6 +532,8 @@ export function applyCommand(world, cmd) {
     case 'truck':
       if (cmd.direction !== 'inbound' && cmd.direction !== 'outbound') return {ok:false, error:'direction must be inbound or outbound'};
       return callTruck(S, cmd.direction) ? {ok:true} : {ok:false, error:`an ${cmd.direction} truck is already scheduled or at the dock`};
+    case 'anomaly': return startAnomaly(S, cmd.type || 'random', {durationS:cmd.durationS, severity:cmd.severity, manual:true});
+    case 'clearAnomaly': return endAnomaly(S);
     default: return {ok:false, error:'unknown action'};
   }
 }
@@ -614,13 +657,25 @@ export function pubPeople(world) {
     {id:'FLT-1', role:'Forklift driver', station:'Warehouse', activity:f.task ? `${f.task.kind}: ${locName(f.task.from)} to ${locName(f.task.to)}` : 'Parked', position:{x:r(f.x, 2), z:r(f.z, 2)}},
   ];
 }
+// Ground truth of injected anomalies. Keep these values out of the inputs of any detector you are evaluating.
+export function pubAnomaly(world) {
+  const S = world.S, A = S.anom, a = A.active, def = a ? ANOMALIES.find(d => d.type === a.type) : null, iso = t => simTime(world, t).iso;
+  return {
+    active:!!a, id:a ? a.id : '', type:a ? a.type : '', name:def ? def.name : '', station:a ? a.station : '', severity:a ? a.severity : 0,
+    level:a ? r(anomalyLevel(S, a.station), 3) : 0, effect:def ? def.effect : '', manual:a ? a.manual : false,
+    startUtc:a ? iso(a.startT) : '', endUtc:a ? iso(a.endT) : '', secondsRemaining:a ? r(Math.max(0, a.endT - S.t), 1) : 0,
+    count:A.count, integratedS:r(A.integratedS, 1), nextInS:a ? null : r(Math.max(0, A.nextAt - S.t), 0),
+    last:A.last ? {id:A.last.id, type:A.last.type, station:A.last.station, startUtc:iso(A.last.startT), endUtc:iso(A.last.endT)} : null,
+    catalog:ANOMALIES.map(d => ({type:d.type, name:d.name, station:d.station, effect:d.effect})),
+  };
+}
 export function pubEvents(world, limit = 50, sinceId = 0) {
   return world.S.log.filter(e => e.id > sinceId).slice(0, limit).map(e => ({id:e.id, time:simTime(world, e.t), severity:e.kind, source:e.src, message:e.msg}));
 }
 export function pubHistory(world) { return world.S.hist.map(h => ({time:simTime(world, h.t).iso, t:h.t, oee:h.oee, availability:h.a, performance:h.p, quality:h.q, throughputPerHour:h.rate, powerKw:h.kw, good:h.good, scrap:h.scrap, rawDiscs:h.raw, finishedPallets:h.fg})); }
 export function pubMachineHistory(world, i) { return world.S.mach[i].hist.map(h => ({time:simTime(world, h.t).iso, ...h})); }
 export function pubState(world) {
-  return {status:pubStatus(world), kpis:pubKpis(world), machines:MACH.map((_, i) => pubMachine(world, i)), agvs:world.S.agv.map((_, k) => pubAgv(world, k)), material:pubBuffers(world), people:pubPeople(world), warehouse:pubWarehouse(world)};
+  return {status:pubStatus(world), kpis:pubKpis(world), machines:MACH.map((_, i) => pubMachine(world, i)), agvs:world.S.agv.map((_, k) => pubAgv(world, k)), material:pubBuffers(world), people:pubPeople(world), warehouse:pubWarehouse(world), anomaly:pubAnomaly(world)};
 }
 
 /* ============================================================ viewer messages (WebSocket) */
@@ -648,6 +703,6 @@ export function viewStats(world) {
     k:'s', status:pubStatus(world), kpis:pubKpis(world),
     machines:MACH.map((_, i) => ({...pubMachine(world, i), segs:S.mach[i].segs.filter((a, k, arr) => (k + 1 < arr.length ? arr[k + 1].t : S.t) >= S.t - 1800).map(a => [a.s, r(a.t, 1)])})),
     agvs:S.agv.map((_, k) => pubAgv(world, k)), material:pubBuffers(world), people:pubPeople(world), warehouse:pubWarehouse(world),
-    hist:S.hist, events:pubEvents(world, 80),
+    hist:S.hist, events:pubEvents(world, 80), anomaly:pubAnomaly(world), ai:world.ai || null,
   };
 }

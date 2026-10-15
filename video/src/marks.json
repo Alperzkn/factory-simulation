@@ -1,0 +1,12 @@
+{
+ "plant": 0,
+ "line": 168,
+ "machine": 297,
+ "warehouse": 515,
+ "whdash": 734,
+ "overview": 890,
+ "energy": 1046,
+ "fault": 1181,
+ "speed": 1385,
+ "end": 1595
+}

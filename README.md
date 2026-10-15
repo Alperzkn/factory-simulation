@@ -29,13 +29,27 @@ npm run build:static
 
 writes `dist/`, a static copy of the viewer and docs in which the simulation runs in the browser. It needs no server, so it can be hosted anywhere that serves files; `vercel.json` already points Vercel at it. This build has no REST API, MQTT broker or OPC UA server, and each visitor gets their own plant.
 
+## Siemens Industrial Edge
+
+On Industrial Edge the simulation runs in Flow Creator and publishes SIMATIC v1 JSON to the IE Databus under connector `kestreltwin1`, with random process anomalies and their ground truth. The twin app runs as an Edge app in Databus mode and shows that data in 3D.
+
+| File | Purpose |
+| --- | --- |
+| `edge/kestrel-twin-flow.json` | Flow to import into Flow Creator |
+| `edge/tag-catalog.csv` | All tags with ids, types and data points |
+| `docker-compose.yml` | The twin app for the Industrial Edge App Publisher |
+
+`npm run build:flow` regenerates the flow and the catalogue from `shared/`. The full guide is in the documentation under Siemens Industrial Edge. The flow has been tested in Node-RED with a local broker, not yet on an Edge Device.
+
 ## Layout
 
 | Path | Contents |
 | --- | --- |
 | `shared/plant.js` | Plant definition: stations, process tags, conveyors, AGV loop, warehouse |
-| `shared/engine.js` | The simulation, KPI formulas and the public data model |
-| `server/` | HTTP and WebSocket server, REST API, MQTT broker, OPC UA server |
+| `shared/engine.js` | The simulation, anomalies, KPI formulas and the public data model |
+| `shared/databus.js` | SIMATIC v1 tag catalogue, metadata, payloads and write handling |
+| `server/` | HTTP and WebSocket server, REST API, MQTT broker, OPC UA server, Databus client |
+| `edge/` | Flow Creator flow, tag catalogue and the script that builds them |
 | `public/` | The 3D viewer |
 | `docs/` | Documentation site, served at `/docs/` |
 | `archive/` | The original single-file prototype |
