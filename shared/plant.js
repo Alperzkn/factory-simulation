@@ -10,8 +10,7 @@ export const SPACING = 0.72;           // minimum part pitch on a conveyor
 export const CONV_V = 0.3;             // conveyor speed, m/s
 export const PALLET_QTY = 8;           // finished discs per pallet
 export const RAW_PALLET_QTY = 12;      // raw castings per pallet
-export const TOTE_RAW = 6;
-export const TOTE_WIP = 4;
+export const TOTE_RAW = 6, TOTE_WIP = 4;
 export const BUFFER_CAP = 12;
 
 // Process tags. `run`/`idle`/`off` are the values a signal settles at in each state (first-order lag `tau`),
@@ -93,9 +92,7 @@ export function ringPos(s) {
   return {x:RING.x0, z:RING.z1 - (s - 80), yaw:Math.PI / 2};
 }
 export const fwd = (a, b) => (((b - a) % RING_L) + RING_L) % RING_L;
-export const AGV_V = 1.4;
-export const AGV_GAP = 3.2;
-export const AGV_HANDLING = 8;
+export const AGV_V = 1.4, AGV_GAP = 3.2, AGV_HANDLING = 8;
 
 export const OP1 = { table:{x:-13.4, z:-3.45}, mach:{x:-8.5, z:-3.3} };
 export const TECH_HOME = {x:7, z:1};
@@ -127,24 +124,3 @@ for (const zone of ['raw', 'fg']) for (let bay = 0; bay < WH.bays; bay++) for (l
 
 export const STATE_CODE = {OFF:0, IDLE:1, RUN:2, BLOCKED:3, DOWN:4};
 export const STATE_LABEL = {RUN:'Running', IDLE:'Waiting for parts', BLOCKED:'Blocked', DOWN:'Down', OFF:'Off'};
-
-/* ---------------- Injected anomalies ---------------- */
-// Random process anomalies for monitoring and anomaly-detection demos. Each one shifts process tags of one station
-// (or the plant air system); `run` deltas only apply while the station is cycling. Severity scales every effect.
-export const ANOMALIES = [
-  {type:'spindle_bearing', station:'M1', name:'Spindle bearing wear', effect:'Vibration, spindle load and coolant temperature rise; more power per cycle',
-   tags:{vibration:[3.2, 'run'], spindleLoad:[14, 'run'], coolantTemp:[4]}, kw:0.25, ct:0.05},
-  {type:'coolant_pump', station:'M2', name:'Coolant pump degradation', effect:'Coolant pressure falls, coolant heats up, cycles slow down and more drilling defects',
-   tags:{coolantPressure:[-11, 'run'], coolantTemp:[7]}, ct:0.15, defect:0.03},
-  {type:'nozzle_clog', station:'M4', name:'Spray nozzle clogging', effect:'Spray pressure rises and rinse conductivity drifts up',
-   tags:{sprayPressure:[2.2, 'run'], conductivity:[260]}},
-  {type:'heater_drift', station:'M5', name:'Cure zone heater drift', effect:'Cure temperature falls, coating gets thinner and coating defects rise',
-   tags:{zone2Temp:[-38], zone1Temp:[-6]}, part:{coatThickness:-2.4}, defect:0.10},
-  {type:'probe_drift', station:'M6', name:'Measuring probe drift', effect:'Measured runout drifts upwards although the discs are good (sensor fault)',
-   part:{runout:14}},
-  {type:'vacuum_leak', station:'M7', name:'Gripper vacuum leak', effect:'Gripper vacuum weakens and palletising slows down',
-   tags:{vacuum:[26, 'run']}, ct:0.3},
-  {type:'air_leak', station:'PLANT', name:'Compressed air leak', effect:'Air header pressure drops and the compressor draws more power',
-   air:-1.3, auxKw:9},
-];
-export const ANOMALY_TIMING = {meanIntervalS:2400, minIntervalS:600, minDurationS:180, maxDurationS:600};

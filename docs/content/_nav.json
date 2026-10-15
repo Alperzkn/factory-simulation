@@ -6,8 +6,7 @@
         { "slug": "introduction", "title": "Introduction" },
         { "slug": "getting-started", "title": "Getting started" },
         { "slug": "user-guide", "title": "Using the 3D viewer" },
-        { "slug": "configuration", "title": "Configuration" },
-        { "slug": "industrial-edge", "title": "Siemens Industrial Edge" }
+        { "slug": "configuration", "title": "Configuration" }
       ]
     },
     {

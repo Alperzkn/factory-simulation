@@ -58,8 +58,6 @@ button{cursor:pointer}
 .alarms{position:fixed;right:12px;top:78px;z-index:4;display:flex;flex-direction:column;gap:6px;width:280px}
 .alarm{display:grid;grid-template-columns:auto 1fr;gap:2px 9px;align-items:center;text-align:left;padding:8px 11px;border:1px solid var(--down);border-left-width:4px;border-radius:8px;background:rgba(255,255,255,.96);box-shadow:0 4px 14px rgba(22,35,45,.12)}
 .alarm b{font-weight:600}.alarm span{grid-column:2;color:var(--ink2);font-size:12px}
-.alarm.anomaly{border-color:#8A4FB0}.alarm.anomaly i{background:#8A4FB0}
-.rail .n.amber{background:#8A4FB0}
 .alarm i{width:9px;height:9px;border-radius:50%;background:var(--down);animation:pulse 1s infinite}
 @keyframes pulse{50%{opacity:.25}}
 
@@ -142,7 +140,7 @@ tr.go{cursor:pointer}tr.go:hover td{background:#F5F8FA}
 .log{list-style:none;margin:0;padding:0;font-size:12.5px}
 .log li{display:grid;grid-template-columns:58px 74px 1fr;gap:8px;padding:5px 0;border-top:1px solid var(--hair)}
 .log li:first-child{border-top:0}.log time{color:var(--muted)}.log .src{color:var(--ink2)}
-.log .alarm-t{color:var(--down);font-weight:500}.log .anomaly-t{color:#8A4FB0;font-weight:500}.log .quality-t{color:#A8650A}
+.log .alarm-t{color:var(--down);font-weight:500}.log .quality-t{color:#A8650A}
 .empty{color:var(--muted);margin:0}
 .rackmap{display:grid;grid-template-columns:auto repeat(6,1fr);gap:4px;font-size:11.5px;align-items:stretch}
 .rackmap .h{color:var(--muted);text-align:center;align-self:center}.rackmap .lv{color:var(--muted);align-self:center;padding-right:4px}

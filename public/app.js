@@ -128,7 +128,6 @@ $('mBody').addEventListener('click', e => {
   else if (act === 'focus') { closeModal(true); scene && scene.focusOn(+a, +b); }
   else if (act === 'copy') { navigator.clipboard && navigator.clipboard.writeText(t.dataset.text); t.textContent = 'Copied'; setTimeout(() => { t.textContent = 'Copy'; }, 1200); }
   else if (act === 'evf') { evFilter = a; renderModal(); }
-  else if (act === 'anom') send(a === 'clear' ? {action:'clearAnomaly'} : {action:'anomaly', type:a});
 });
 
 /* ============================================================ dashboards */
@@ -183,24 +182,6 @@ const DASH = {
       {html:h3('Reliability') + machRows([{h:'Station', f:m => `<b>${m.id}</b> ${esc(m.name)}`}, {h:'State', f:m => pill(m.state)}, {h:'Availability', num:1, f:m => m.oee.availability.toFixed(1) + '%'}, {h:'Stops', num:1, f:m => m.counters.stops}, {h:'Downtime', num:1, f:m => dur(m.timeS.down)}, {h:'Mean time between failures', num:1, f:m => dur(m.maintenance.mtbfS)}, {h:'Mean time to repair', num:1, f:m => dur(m.maintenance.mttrS)}])},
     ];
   }},
-  anomalies:{title:'Anomalies', sub:'Injected process anomalies (ground truth) and what a detector reports', wide:true, blocks() {
-    const A = D.anomaly, ai = D.ai, cat = A.catalog || [];
-    const st = A.station === 'PLANT' ? 'the compressed air system' : A.station;
-    const gt = A.active
-      ? `<div class="statebar" style="margin-bottom:10px"><span class="st"><i class="dot BLOCKED"></i>${esc(A.name)} on ${esc(st)}</span><span class="why">${esc(A.id)}, severity ${Math.round(A.severity * 100)}%, ${dur(A.secondsRemaining)} min left</span><span class="sp"><button class="btn" data-act="anom:clear">End it now</button></span></div><p style="margin:0;color:var(--ink2)">${esc(A.effect)}.</p>`
-      : `<p class="empty" style="margin:0">No anomaly is active.${A.nextInS != null ? ` The next random one is due in about ${dur(A.nextInS)} min.` : ''}</p>`;
-    const aiTxt = ai ? kv([['Anomaly score', `${ai.AnomalyScore ?? '-'} of 1000`], ['Status', ['Normal', 'Warning', 'Alarm'][ai.Status] ?? '-'], ['Suspected station', ai.Station ? (ai.Station === 8 ? 'Air system' : `M${ai.Station}`) : 'None'], ['Health index', ai.HealthIndex != null ? ai.HealthIndex + '%' : '-']])
-      : '<p class="empty" style="margin:0">No detector has written results yet. AI Inference Server, or any client, can write AnomalyScore, Status, Station and HealthIndex to the AI_0 data point and they appear here.</p>';
-    const i = MACH.findIndex(m => m.id === A.station), d = MACH[i], rows = i >= 0 ? machHist(d.id) : [];
-    return [
-      {html:tiles([tile('Active now', A.active ? 'Yes' : 'No'), tile('Injected this shift', A.count), tile('Anomaly time', dur(A.integratedS), 'min'), tile('Detector status', ai ? ['Normal', 'Warning', 'Alarm'][ai.Status] ?? '-' : 'No data')])},
-      {cls:'c7', html:h3('Ground truth', 'exclude from detector inputs') + gt},
-      {cls:'c5', html:h3('Detector results', 'AI_0') + aiTxt},
-      ...(d ? d.tags.filter(tg => !tg.wear).slice(0, 3).map(tg => ({cls:'c4', chart:cv => lineChart(cv, rows, {key:tg.k, zero:false, unit:tg.unit, dec:tg.dec}), h:96, cap:`${d.id}: ${tg.name}, ${tg.unit}`, val:n1(D.machines[i].tags[tg.k].value, tg.dec)})) : []),
-      {html:h3('Inject an anomaly') + `<div class="row"><button class="btn primary" data-act="anom:random" ${A.active ? 'disabled' : ''}>Random</button>${cat.map(c => `<button class="btn" data-act="anom:${c.type}" title="${esc(c.effect)}" ${A.active ? 'disabled' : ''}>${esc(c.name)} (${c.station === 'PLANT' ? 'air' : c.station})</button>`).join('')}</div><p class="note">Anomalies also start on their own at random, on average every 40 simulated minutes, and last 3 to 10 minutes.</p>`},
-      {html:h3('Anomaly events') + evList(D.events.filter(e => e.severity === 'anomaly').slice(0, 10), 'No anomalies so far this shift.')},
-    ];
-  }},
   stations:{title:'Stations', sub:'State, 30 minute history and key figures for every station', wide:true, blocks() {
     return [{build(el) {
       el.innerHTML = `<table><thead><tr><th>Station</th><th>State</th><th style="width:38%"><span style="float:left">30 min ago</span><span style="float:right">now</span></th><th class="num">OEE</th><th class="num">Avail.</th><th class="num">Perf.</th><th class="num">Quality</th><th class="num">Parts</th><th class="num">Scrap</th><th class="num">kW</th><th>Crew</th></tr></thead><tbody>${MACH.map((d, i) => `<tr class="go" data-act="open:machine:${i}"><td><b>${d.id}</b> ${d.name}</td><td></td><td><canvas class="tl"></canvas></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td><td class="num"></td><td>${d.crew ? 'Operator' : 'Unattended'}</td></tr>`).join('')}</tbody></table>${LEGEND}`;
@@ -231,20 +212,12 @@ const DASH = {
     ];
   }},
   events:{title:'Event log', sub:'Alarms, quality and logistics events, newest first', blocks() {
-    const kinds = [['all', 'All'], ['alarm', 'Alarms'], ['anomaly', 'Anomalies'], ['quality', 'Quality'], ['logistics', 'Logistics'], ['info', 'Information']];
+    const kinds = [['all', 'All'], ['alarm', 'Alarms'], ['quality', 'Quality'], ['logistics', 'Logistics'], ['info', 'Information']];
     const evs = D.events.filter(e => evFilter === 'all' || e.severity === evFilter);
     return [{html:`<div class="filter">${kinds.map(([k, l]) => `<button data-act="evf:${k}" aria-pressed="${evFilter === k}">${l}</button>`).join('')}</div>` + evList(evs, 'No events of this kind yet.')}];
   }},
   connectivity:{title:'Connectivity', sub:'Every figure in this twin is served over these interfaces', wide:true, blocks() {
     if (!D.services) return [{html:'<p style="margin:0 0 8px"><b>This is the browser-only build.</b> The simulation runs in this page, so there is no server to connect to and each visitor has their own plant.</p><p style="margin:0 0 12px;color:var(--ink2)">Running the app with Node (<code>npm start</code>) adds the REST API, the MQTT broker and the OPC UA server described in the documentation.</p><a class="btn primary" style="display:inline-flex;align-items:center;text-decoration:none" href="/docs/" target="_blank" rel="noopener">Open the documentation</a>'}];
-    if (D.services.databus) { const db = D.services.databus, st = db.status === 'running' ? 'ok' : db.status === 'error' ? 'bad' : 'off';
-      return [
-        {html:`<div class="svc"><b>${db.name}</b><span class="${st}">${db.status === 'running' ? 'Connected' : db.status === 'error' ? 'Not connected' : 'Connecting'}</span><span><code>${esc(db.url)}</code><br><span class="note">${db.error ? esc(db.error) : `${db.messages} messages received, ${db.metadataTags || 0} tags in the metadata, last ${db.lastMessageAt ? esc(db.lastMessageAt.slice(11, 19)) + ' UTC' : 'never'}`}</span></span><button class="btn" data-act="copy" data-text="${esc(db.url)}">Copy</button></div>`
-          + `<div class="svc"><b>${D.services.http.name}</b><span class="ok">Running</span><span><code>${esc(D.services.http.url)}</code><br><span class="note">Read-only views of the Databus data; commands are sent as Control_0 writes</span></span><button class="btn" data-act="copy" data-text="${esc(D.services.http.url)}">Copy</button></div>`},
-        {cls:'c6', html:h3('Data from Flow Creator') + `<pre>Connector   ${esc(db.connector)}\nMetadata    ie/m/j/simatic/v1/${esc(db.connector)}/dp\nValues      ${esc(db.readTopic)}</pre><p class="note">Chunks: Plant_0, M1_0 to M7_0, Logistics_0, Warehouse_0, Warehouse_1, Frame_0, Twin_0, History_0, Control_0 and AI_0.</p>`},
-        {cls:'c6', html:h3('Commands back to the flow') + `<pre>Write topic ${esc(db.writeTopic)}\nPayload     {"seq":1,"vals":[{"id":"&lt;tag id&gt;","val":"start"}]}</pre><p class="note">Start, Pause, Stop, Reset, the speed, faults, trucks and anomalies from this viewer are written here.</p>`},
-        {html:`<div class="row"><a class="btn primary" style="display:inline-flex;align-items:center;text-decoration:none" href="/docs/#/industrial-edge" target="_blank" rel="noopener">Industrial Edge guide</a><span class="note" style="margin:0">The simulation runs in the Flow Creator flow. This app only displays it.</span></div>`},
-      ]; }
     const sv = D.services, base = sv.mqtt.baseTopic, row = (s, extra = '') => `<div class="svc"><b>${s.name}</b><span class="${s.status === 'running' ? 'ok' : s.status === 'error' ? 'bad' : 'off'}">${s.status === 'running' ? 'Running' : s.status === 'error' ? 'Not running' : s.status === 'disabled' ? 'Disabled' : 'Starting'}</span><span><code>${esc(s.url)}</code>${s.error ? `<br><span class="note">${esc(s.error)}</span>` : extra ? `<br><span class="note">${extra}</span>` : ''}</span><button class="btn" data-act="copy" data-text="${esc(s.url)}">Copy</button></div>`;
     return [
       {html:row(sv.http, 'JSON over HTTP, plus Server-Sent Events at /api/v1/stream') + row(sv.websocket, 'Live frames and commands for viewers') + row(sv.mqtt, `Topics under ${base}/#, ${sv.mqtt.clients} client${sv.mqtt.clients === 1 ? '' : 's'} connected. Also available over WebSocket at ${esc(sv.mqtt.wsUrl)}`) + row(sv.opcua, `Anonymous access, namespace index ${sv.opcua.namespaceIndex ?? 1}, ${sv.opcua.sessions} session${sv.opcua.sessions === 1 ? '' : 's'}`) + row(sv.docs, 'Guides and reference for every interface')},
@@ -289,10 +262,10 @@ function machineModal(i) {
 }
 function materialModal(id, ent, extra = '') {
   return {key:`mat${id}`, ent, title:() => '', blocks() {
-    const b = D.material.find(x => x.id === id), by = {}; (b.parts || []).forEach(p => { by[p.stage] = (by[p.stage] || 0) + 1; });
+    const b = D.material.find(x => x.id === id), by = {}; b.parts.forEach(p => { by[p.stage] = (by[p.stage] || 0) + 1; });
     return [
-      {html:kv([['Parts', `${b.quantity} of ${b.capacity}`], ['Fill level', Math.round(b.quantity / b.capacity * 100) + '%'], ...(b.kind === 'conveyor' ? [['Length', b.lengthM + ' m'], ...(b.speedMps != null ? [['Belt speed', b.speedMps + ' m/s']] : [])] : []), ...Object.entries(by).map(([k, v]) => [k, v])]) + (extra ? `<p class="note">${extra}</p>` : '')},
-      {html:h3('Parts here now') + (!b.parts ? '<p class="empty">Individual parts are not published on the Databus.</p>' : b.parts.length ? `<table><thead><tr><th>Part</th><th>Stage</th>${b.kind === 'conveyor' ? '<th class="num">Position</th>' : ''}</tr></thead><tbody>${b.parts.map(p => `<tr><td>Disc ${p.id}</td><td>${p.stage}</td>${b.kind === 'conveyor' ? `<td class="num">${p.positionM.toFixed(2)} m</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty">Empty.</p>')},
+      {html:kv([['Parts', `${b.quantity} of ${b.capacity}`], ['Fill level', Math.round(b.quantity / b.capacity * 100) + '%'], ...(b.kind === 'conveyor' ? [['Length', b.lengthM + ' m'], ['Belt speed', b.speedMps + ' m/s']] : []), ...Object.entries(by).map(([k, v]) => [k, v])]) + (extra ? `<p class="note">${extra}</p>` : '')},
+      {html:h3('Parts here now') + (b.parts.length ? `<table><thead><tr><th>Part</th><th>Stage</th>${b.kind === 'conveyor' ? '<th class="num">Position</th>' : ''}</tr></thead><tbody>${b.parts.map(p => `<tr><td>Disc ${p.id}</td><td>${p.stage}</td>${b.kind === 'conveyor' ? `<td class="num">${p.positionM.toFixed(2)} m</td>` : ''}</tr>`).join('')}</tbody></table>` : '<p class="empty">Empty.</p>')},
     ];
   }};
 }
@@ -350,11 +323,10 @@ const ICON = {
   overview:'M4 17a8 8 0 1 1 16 0M12 17l4-6', production:'M3 8l9-5 9 5v8l-9 5-9-5zM3 8l9 5 9-5M12 13v8', quality:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM8 12l3 3 5-6',
   energy:'M13 3L5 14h6l-1 7 8-11h-6z', maintenance:'M15 6a4 4 0 0 0 4.5 5.3L10 21l-3-3 9.7-9.5A4 4 0 0 0 15 6z', stations:'M4 6h16M4 12h16M4 18h16',
   logistics:'M3 15h18v-4H3zM7.5 18.5h.01M16.5 18.5h.01M6 11V7h9v4', warehouse:'M3 10l9-6 9 6v10H3zM8 20v-6h8v6M8 17h8', events:'M6 16v-5a6 6 0 1 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0',
-  anomalies:'M3 12h4l2-6 4 12 2-6h6',
   connectivity:'M5 12a7 7 0 0 1 14 0M8.5 12a3.5 3.5 0 0 1 7 0M12 12v7M9 19h6', docs:'M5 4h11a3 3 0 0 1 3 3v13H8a3 3 0 0 1-3-3zM5 17a3 3 0 0 1 3-3h11',
 };
-const RAIL = [['overview', 'Overview'], ['production', 'Production'], ['quality', 'Quality'], ['energy', 'Energy'], ['maintenance', 'Maintenance'], ['anomalies', 'Anomalies'], ['stations', 'Stations'], ['logistics', 'Logistics'], ['warehouse', 'Warehouse'], ['events', 'Events'], null, ['connectivity', 'Connectivity']];
-$('rail').innerHTML = RAIL.map(r => r ? `<button data-open="${r[0]}" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICON[r[0]]}"/></svg>${r[1]}${r[0] === 'maintenance' ? '<span class="n" id="nFault" hidden></span>' : r[0] === 'anomalies' ? '<span class="n amber" id="nAnom" hidden></span>' : ''}</button>` : '<hr>').join('')
+const RAIL = [['overview', 'Overview'], ['production', 'Production'], ['quality', 'Quality'], ['energy', 'Energy'], ['maintenance', 'Maintenance'], ['stations', 'Stations'], ['logistics', 'Logistics'], ['warehouse', 'Warehouse'], ['events', 'Events'], null, ['connectivity', 'Connectivity']];
+$('rail').innerHTML = RAIL.map(r => r ? `<button data-open="${r[0]}" aria-pressed="false"><svg viewBox="0 0 24 24"><path d="${ICON[r[0]]}"/></svg>${r[1]}${r[0] === 'maintenance' ? '<span class="n" id="nFault" hidden></span>' : ''}</button>` : '<hr>').join('')
   + `<a href="/docs/" target="_blank" rel="noopener"><svg viewBox="0 0 24 24"><path d="${ICON.docs}"/></svg>Documentation</a>`;
 $('rail').addEventListener('click', e => { const b = e.target.closest('button[data-open]'); if (b) openDash(b.dataset.open); });
 
@@ -411,16 +383,14 @@ function onStats() {
   stripEls.forEach((el, i) => { if (el.lastChild.innerHTML !== vals[i]) el.lastChild.innerHTML = vals[i]; });
   stripEls[7].classList.toggle('alert', faults.length > 0);
   const nf = $('nFault'); nf.hidden = !faults.length; nf.textContent = faults.length;
-  const na = $('nAnom'); na.hidden = !(D.anomaly && D.anomaly.active); na.textContent = '1';
   const ah = faults.map(m => `<button class="alarm" data-i="${D.machines.indexOf(m)}"><i></i><b>${m.id} ${esc(m.name)} is down</b><span>${esc(m.fault.reason)}, ${m.fault.technicianOnSite ? 'repair in progress' : 'technician called'}</span></button>`).join('');
-  const A = D.anomaly, an = A && A.active ? `<button class="alarm anomaly" data-anom="1"><i></i><b>Anomaly injected: ${esc(A.name)}</b><span>${A.station === 'PLANT' ? 'Air system' : A.station}, severity ${Math.round(A.severity * 100)}%, ${dur(A.secondsRemaining)} min left</span></button>` : '';
-  if ($('alarms')._h !== an + ah) { $('alarms').innerHTML = an + ah; $('alarms')._h = an + ah; }
+  if ($('alarms')._h !== ah) { $('alarms').innerHTML = ah; $('alarms')._h = ah; }
   D.machines.forEach((m, i) => { const c = 'chip ' + m.state; if (chipEls[i].className !== c) chipEls[i].className = c; });
   D.agvs.forEach((a, i) => { agvChips[i].lastChild.textContent = `${a.batteryPct.toFixed(0)}%`; });
   if (scene) scene.setStats(D);
   renderModal();
 }
-$('alarms').addEventListener('click', e => { const b = e.target.closest('.alarm'); if (!b) return; if (b.dataset.anom) openDash('anomalies'); else openEntity({type:'machine', id:+b.dataset.i}); });
+$('alarms').addEventListener('click', e => { const b = e.target.closest('.alarm'); if (b) openEntity({type:'machine', id:+b.dataset.i}); });
 
 /* ============================================================ render loop */
 let last = performance.now();
